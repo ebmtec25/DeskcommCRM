@@ -6797,7 +6797,12 @@ create policy tenant_isolation_agent_case_events_insert on agent_case_events
 -- job_queue_check (anônimo, gerado pelo Postgres) para o CHECK de coerência.
 alter table job_queue drop constraint if exists job_queue_kind_check;
 alter table job_queue add constraint job_queue_kind_check
-  check (kind in ('inbound_turn','followup_turn','watchdog','flywheel','case_reply_turn'));
+  -- 'operator_turn' (migration 0111, spec 16 §3.2) entra NESTE bloco, não num
+  -- novo no fim: reconstruir a mesma constraint em N blocos quebra o update.sh
+  -- de todo clone que já tenha uma linha de vocabulário posterior — os blocos
+  -- antigos rodam antes e falham em cadeia. Vigiado por
+  -- tests/unit/baseline-constraint-reconstruida.test.ts.
+  check (kind in ('inbound_turn','followup_turn','watchdog','flywheel','case_reply_turn','operator_turn'));
 alter table job_queue drop constraint if exists job_queue_turn_needs_contact;
 do $$
 declare c text;
@@ -6808,7 +6813,7 @@ begin
   if c is not null then execute format('alter table job_queue drop constraint %I', c); end if;
 end $$;
 alter table job_queue add constraint job_queue_turn_needs_contact
-  check ((kind in ('inbound_turn','followup_turn','case_reply_turn')) = (contact_id is not null));
+  check ((kind in ('inbound_turn','followup_turn','case_reply_turn','operator_turn')) = (contact_id is not null));
 
 alter table cron_jobs drop constraint if exists cron_jobs_job_kind_check;
 alter table cron_jobs add constraint cron_jobs_job_kind_check
@@ -9017,6 +9022,12 @@ alter table public.agent_inbox_items
     -- — os blocos antigos rodam antes e falham em cadeia. Um bloco por
     -- constraint, vigiado por tests/unit/baseline-constraint-reconstruida.test.ts.
     'message_send_stuck',
+    -- (migration 0111, spec 16 §3.2) O papel Operador declara promessa em aberto:
+    -- o assistente prometeu algo ao cliente e o cumprimento não foi registrado.
+    -- A invariante sagrada da spec é "nenhuma promessa deixa de ser cumprida", e
+    -- uma promessa sem dono precisa aparecer onde o humano olha — não no log do
+    -- worker. Entra NESTA lista pela mesma razão que a de cima.
+    'promise_unfulfilled',
     'other'
   ));
 
@@ -9142,5 +9153,179 @@ comment on column public.ai_invocations.agent_id is
   '(ex.: classificador de sentimento numa org sem agente publicado). O custo '
   'existe e precisa aparecer nas telas de consumo — ver issue #160.';
 
+
+notify pgrst, 'reload schema';
+
+-- ---- lead_checkpoints.declaracao: a fronteira FALAR/OPERAR (migration 0110) ----
+-- Spec 16 §5. NULLABLE de propósito: NULL = o modelo não declarou;
+-- {"nada_a_declarar":true} = avaliou e não havia nada. Colapsar os dois num
+-- default apagaria o esquecimento, que é o que o invariante 4 manda mostrar.
+alter table lead_checkpoints
+  add column if not exists declaracao jsonb;
+
+comment on column lead_checkpoints.declaracao is
+  'Declaração do turno (spec 16 §5): {intencoes[], promessas[], nada_a_declarar}. '
+  'NULL = o modelo não declarou; {"nada_a_declarar":true} = avaliou e não havia nada. '
+  'Os dois estados são distintos por desenho.';
+
+notify pgrst, 'reload schema';
+
+-- ---- turno do OPERADOR: config por versão (migration 0111) ----
+-- Spec 16 §3.2. O papel que mexe no sistema e nunca fala com o lead; disparo
+-- imposto pelo runtime, por evento.
+--
+-- Os DOIS CHECKs de `job_queue` (kind + coerência kind⇔contato) NÃO estão aqui:
+-- eles vivem no bloco único lá em cima, já com 'operator_turn'. Reconstruí-los
+-- aqui criaria o segundo bloco que quebra o update.sh do clone.
+alter table ai_agent_versions
+  add column if not exists operator_enabled boolean not null default false;
+alter table ai_agent_versions
+  add column if not exists operator_model text;
+
+-- (migration 0112) Ferramentas do papel Operador — coluna PRÓPRIA, não reuso de
+-- `tool_ids`: se os dois papéis lessem a mesma lista, a seção "Operador" da tela
+-- estaria configurando o que o Conversador executa. Default vazio: o papel nasce
+-- sem mão, e herdar as do Conversador em silêncio daria 20 capacidades a quem
+-- não escolheu nenhuma.
+alter table ai_agent_versions
+  add column if not exists operator_tool_ids text[] not null default '{}'::text[];
+
+comment on column ai_agent_versions.operator_tool_ids is
+  'Spec 16 §6: capacidades do papel Operador, independentes de `tool_ids` (do '
+  'Conversador). Vazio = o papel roda mas não tem mão — estado legítimo: ele '
+  'ainda registra promessa em aberto na Central.';
+
+comment on column ai_agent_versions.operator_enabled is
+  'Spec 16 §3.2: o papel Operador roda após o turno do Conversador. false = o '
+  'registro básico segue por código determinístico (estado, follow-up prometido, '
+  'timeline); o que se perde é o julgamento sobre as capacidades do catálogo.';
+comment on column ai_agent_versions.operator_model is
+  'Modelo do papel Operador. NULL = herda o modelo do agente.';
+
+notify pgrst, 'reload schema';
+-- 0115 — duas entidades que não se conseguia apagar.
+--
+-- Achados ao remover as fixtures de E2E da produção em 2026-08-06. Os dois são
+-- da mesma família: uma escrita AUTOMÁTICA (trigger/FK) reagindo ao DELETE e
+-- violando uma regra que vale para o estado normal, mas não para a remoção.
+--
+-- ═══ DEFEITO 1 · não era possível apagar uma ORGANIZAÇÃO ═══
+--
+--   ERROR: insert or update on table "api_audit_log" violates foreign key
+--          constraint "api_audit_log_organization_id_fkey"
+--   DETAIL: Key (organization_id)=(…) is not present in table "organizations".
+--
+-- O cascade apaga os filhos, o trigger de audit de cada um insere em
+-- `api_audit_log` com o `organization_id` — e a organização já não existe. Só
+-- funcionava apagando os filhos à mão ANTES, com o pai vivo.
+--
+-- Conserto: no DELETE, o audit é pulado quando a organização já não existe. Não
+-- se perde auditoria: a linha que ele escreveria seria apagada pelo cascade da
+-- própria organização um instante depois. E a checagem fica SÓ no ramo DELETE —
+-- pôr um `exists` no INSERT/UPDATE cobraria um SELECT em todo hot path de
+-- escrita para proteger de um caso que não acontece lá.
+--
+-- ═══ DEFEITO 2 · não era possível apagar um AGENTE que já atendeu ═══
+--
+--   ERROR: new row for relation "crm_leads" violates check constraint
+--          "crm_leads_owner_kind_coherence"
+--
+-- `crm_leads_owner_agent_id_fkey` é ON DELETE SET NULL; o CHECK exige
+-- `owner_agent_id not null` quando `owner_kind = 'ai'`. O SET NULL zera um lado
+-- e deixa o outro — estado que a constraint proíbe, com razão.
+--
+-- Conserto: um BEFORE DELETE em `ai_agents` desfaz a atribuição INTEIRA (os dois
+-- campos), antes de a FK agir. O lead fica sem dono (`owner_kind is null`, que o
+-- CHECK aceita) em vez de ficar num estado meio-atribuído.
+--
+-- Não se enfraquece o CHECK para tolerar `'ai'` sem agente: ele descreve um
+-- invariante verdadeiro, e afrouxá-lo para acomodar uma operação rara trocaria
+-- um erro barulhento por dados incoerentes em silêncio.
+
+-- ── 1 · o audit não persegue uma organização que está sendo removida ────────
+create or replace function public.fn_audit_log_row() returns trigger
+    language plpgsql security definer
+    set search_path to 'public'
+    as $$
+declare
+  v_action text;
+  v_org    uuid;
+begin
+  if tg_op = 'INSERT' then
+    v_action := tg_table_name || '.created';
+    v_org    := new.organization_id;
+  elsif tg_op = 'UPDATE' then
+    v_action := tg_table_name || '.updated';
+    v_org    := new.organization_id;
+  elsif tg_op = 'DELETE' then
+    v_action := tg_table_name || '.deleted';
+    v_org    := old.organization_id;
+
+    -- A organização está indo embora (cascade em curso). Registrar a exclusão
+    -- de um filho num tenant que deixa de existir não tem consumidor: a linha
+    -- seria apagada pelo cascade em seguida — e tentar escrevê-la aborta a
+    -- transação inteira, que era o defeito.
+    --
+    -- SÓ no ramo DELETE: um `exists` no INSERT/UPDATE cobraria um SELECT em
+    -- todo hot path de escrita para cobrir um caso que não ocorre lá.
+    if v_org is not null and not exists (select 1 from public.organizations where id = v_org) then
+      return old;
+    end if;
+  end if;
+
+  insert into public.api_audit_log (organization_id, actor_user_id, action, resource_type, resource_id, metadata)
+  values (
+    v_org,
+    auth.uid(),
+    v_action,
+    tg_table_name,
+    coalesce(new.id, old.id),
+    case when tg_op = 'UPDATE'
+      then jsonb_build_object('changed_fields', '[diff suppressed in v0.1]')
+      else '{}'::jsonb
+    end
+  );
+
+  return coalesce(new, old);
+end $$;
+
+-- ── 2 · apagar um agente desfaz a atribuição inteira, não metade dela ───────
+create or replace function public.fn_liberar_leads_do_agente() returns trigger
+    language plpgsql security definer
+    set search_path to 'public'
+    as $$
+begin
+  -- ANTES de a FK aplicar seu SET NULL. Zera os DOIS campos: deixar
+  -- `owner_kind = 'ai'` com o agente nulo é exatamente o estado que
+  -- `crm_leads_owner_kind_coherence` proíbe.
+  update public.crm_leads
+     set owner_agent_id = null,
+         owner_kind     = null
+   where owner_agent_id = old.id;
+  return old;
+end $$;
+
+-- As TRÊS origens de EXECUTE (CLAUDE.md, doutrina de migrations):
+--   `public`      — o grant que o Postgres dá a toda função ao criá-la;
+--   `anon`        — o ALTER DEFAULT PRIVILEGES do baseline, que alcança toda
+--                   função criada depois dele;
+--   `authenticated` — idem, e é o que a varredura de hardening cobra.
+--
+-- Revogar de todas é seguro AQUI porque o único call site é o TRIGGER, e o
+-- Postgres não exige EXECUTE do usuário para invocar função de trigger. Nenhuma
+-- sessão chama esta função diretamente.
+revoke execute on function public.fn_liberar_leads_do_agente() from public, anon, authenticated;
+grant  execute on function public.fn_liberar_leads_do_agente() to service_role;
+
+drop trigger if exists trg_liberar_leads_do_agente on public.ai_agents;
+create trigger trg_liberar_leads_do_agente
+  before delete on public.ai_agents
+  for each row execute function public.fn_liberar_leads_do_agente();
+
+comment on function public.fn_liberar_leads_do_agente() is
+  'Migration 0115: desfaz a atribuição de leads antes de o agente ser apagado. '
+  'Sem isto o SET NULL da FK zera owner_agent_id e deixa owner_kind=''ai'', '
+  'violando crm_leads_owner_kind_coherence — e um agente que já atendeu alguém '
+  'não podia ser removido.';
 
 notify pgrst, 'reload schema';

@@ -26,8 +26,14 @@ import type { Logger } from '../../obs/logger';
 import type { CrmEdgeConfig } from './mcp-client';
 import type { PublishedAgentConfig } from '../../agent/agent-config';
 
-/** Tools do catálogo que jamais entram no turno do engine (ver doc acima). */
-const BLOCKED_TOOL_IDS = new Set(['crm_send_whatsapp_message', 'crm_request_human_handoff']);
+/**
+ * Tools do catálogo que jamais entram num turno do engine (ver doc acima).
+ *
+ * Exportado para ser ASSERÍVEL: a garantia de que o papel Operador não tem canal
+ * (spec 16 §3.2) depende desta lista, e uma garantia que nenhum teste consegue
+ * ler é uma garantia que ninguém percebe quando some.
+ */
+export const BLOCKED_TOOL_IDS = new Set(['crm_send_whatsapp_message', 'crm_request_human_handoff']);
 
 export interface McpTurnTools {
   tools: Record<string, Tool>;

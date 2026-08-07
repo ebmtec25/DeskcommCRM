@@ -17,13 +17,9 @@ import * as path from "node:path";
 import { createClient } from "@supabase/supabase-js";
 
 import type { McpContext } from "../lib/mcp/types";
+import { carregarEnvLocal } from "../scripts/lib/env-de-teste";
 
-const envFile = fs.readFileSync(path.join(process.cwd(), ".env.local"), "utf8");
-const env: Record<string, string> = {};
-for (const line of envFile.split("\n")) {
-  const m = line.match(/^([A-Z_0-9]+)=(.*)$/);
-  if (m) env[m[1]!] = m[2]!.replace(/^"(.*)"$/, "$1");
-}
+const env = carregarEnvLocal();
 for (const [k, v] of Object.entries(env)) process.env[k] ??= v;
 
 const admin = createClient(env.NEXT_PUBLIC_SUPABASE_URL!, env.SUPABASE_SERVICE_ROLE_KEY!, {

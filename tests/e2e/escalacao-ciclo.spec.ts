@@ -33,6 +33,7 @@ import * as path from "node:path";
 
 import { expect, test, type Page } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
+import { carregarEnvLocal } from "../../scripts/lib/env-de-teste";
 
 const CREDS_PATH = path.join(process.cwd(), ".e2e-creds.json");
 const EVIDENCIA = path.join(process.cwd(), ".superpowers/evidence/ia-360-w3");
@@ -58,13 +59,9 @@ interface Creds {
 }
 
 function carregarEnv(): Record<string, string> {
-  const bruto = fs.readFileSync(path.join(process.cwd(), ".env.local"), "utf8");
-  const env: Record<string, string> = {};
-  for (const linha of bruto.split("\n")) {
-    const m = linha.match(/^([A-Z0-9_]+)=(.*)$/);
-    if (m) env[m[1]!] = m[2]!.replace(/^"(.*)"$/, "$1");
-  }
-  return env;
+  // `process.env` vence o `.env.local`, e a ausência do arquivo não é erro —
+  // ver scripts/lib/env-de-teste.ts.
+  return carregarEnvLocal();
 }
 
 const env = carregarEnv();

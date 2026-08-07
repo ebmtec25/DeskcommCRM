@@ -22,6 +22,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import { test, expect, type Page, type Locator } from "@playwright/test";
+import { carregarEnvLocal } from "../../scripts/lib/env-de-teste";
 
 // Segue o dev server do harness (playwright.config webServer) — nunca hardcodar
 // porta: o config usa E2E_PORT (default 3001).
@@ -46,8 +47,8 @@ function loadCreds(): Creds {
 }
 
 function loadInternalSecret(): string {
-  const envFile = fs.readFileSync(path.join(process.cwd(), ".env.local"), "utf8");
-  const match = envFile.match(/^INTERNAL_SECRET=(.*)$/m);
+  const envDeTeste = carregarEnvLocal();
+  const match = [null, envDeTeste.INTERNAL_SECRET];
   const secret = match?.[1]?.trim();
   if (!secret) throw new Error("INTERNAL_SECRET não encontrado em .env.local");
   return secret;

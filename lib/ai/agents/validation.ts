@@ -92,6 +92,24 @@ const versionShapeSchema = z
     split_messages: z.boolean().default(false),
     split_max_chars: z.number().int().min(80).max(4000).default(600),
     followup: followupConfigSchema,
+    // ── Papel OPERADOR (spec 16 §3.2) ───────────────────────────────────────
+    // Todos com `.default(...)`, e é o que mantém retrocompatível: agent e
+    // version que já existem, e qualquer payload que não conheça o papel,
+    // seguem válidos e leem o papel como DESLIGADO.
+    operator_enabled: z.boolean().default(false),
+    // `.nullable()` e não opcional: null é o valor que SIGNIFICA "herda o modelo
+    // do Conversador". Omitir seria indistinguível de "ainda não decidi".
+    operator_model: z.string().trim().min(1).max(120).nullable().default(null),
+    // Teto PRÓPRIO, não compartilhado com `tool_ids`: é assim que separar os
+    // papéis resolve o estouro do teto por divisão em vez de aumentar o número.
+    operator_tool_ids: z
+      .array(z.string().min(1).max(80))
+      .max(TETO_TOOLS_POR_AGENTE)
+      .default([])
+      .refine(
+        (ids) => ids.every((id) => (VALID_TOOL_IDS as readonly string[]).includes(id)),
+        { message: "tool_id_invalid" },
+      ),
   })
   .strict();
 

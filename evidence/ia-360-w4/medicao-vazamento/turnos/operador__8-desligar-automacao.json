@@ -5,7 +5,7 @@
   "esperado": "crm_set_automation_rule_active (pode bater em papel/apenasHumano)",
   "rodou": true,
   "status": "completed",
-  "final_text": "Encontrei uma regra ativa: **“SSRF Outbound 1785496528461”**, acionada quando um lead é criado.\n\nNão tenho uma ferramenta disponível para desligar regras automáticas diretamente. Peça a um administrador para desativá-la imediatamente no painel de automações.",
+  "final_text": "Encontrei uma automação ativa, mas ela não está identificada como “boas-vindas”: **“SSRF Outbound 1785496528461”**, disparada na criação de lead.\n\nNão tenho, por aqui, uma ação para desligar regras automáticas. Desative-a imediatamente no painel de automações da clínica; se quiser, posso verificar os últimos disparos e falhas para ajudar a confirmar se é essa a responsável.",
   "ferramentas": [
     "crm_list_automation_rules"
   ],
@@ -14,12 +14,12 @@
       "step": 0,
       "finish_reason": "tool-calls",
       "tokens_in": 2175,
-      "tokens_out": 84,
+      "tokens_out": 68,
       "tool_calls": [
         {
           "tool_name": "crm_list_automation_rules",
           "args": {
-            "only_active": false
+            "only_active": true
           },
           "result": {
             "regras": [
@@ -32,8 +32,8 @@
                   "call_webhook"
                 ],
                 "quantidade_de_condicoes": 0,
-                "last_run_at": "2026-08-05T14:11:39.48+00:00",
-                "run_count": 22,
+                "last_run_at": "2026-08-06T15:27:34.791+00:00",
+                "run_count": 30,
                 "last_change_actor_kind": null,
                 "last_change_at": null
               }
@@ -44,16 +44,16 @@
     },
     {
       "step": 1,
-      "text": "Encontrei uma regra ativa: **“SSRF Outbound 1785496528461”**, acionada quando um lead é criado.\n\nNão tenho uma ferramenta disponível para desligar regras automáticas diretamente. Peça a um administrador para desativá-la imediatamente no painel de automações.",
+      "text": "Encontrei uma automação ativa, mas ela não está identificada como “boas-vindas”: **“SSRF Outbound 1785496528461”**, disparada na criação de lead.\n\nNão tenho, por aqui, uma ação para desligar regras automáticas. Desative-a imediatamente no painel de automações da clínica; se quiser, posso verificar os últimos disparos e falhas para ajudar a confirmar se é essa a responsável.",
       "finish_reason": "stop",
-      "tokens_in": 2388,
-      "tokens_out": 63,
+      "tokens_in": 2372,
+      "tokens_out": 96,
       "tool_calls": []
     }
   ],
-  "latency_ms": 3741,
+  "latency_ms": 4735,
   "cost_cents": 2,
   "model": "gpt-5.6-terra",
-  "agent_version_id": "aecaa9ea-b8a6-4f15-9b66-479a44f2db1e",
-  "medido_em": "2026-08-05T20:03:31.181Z"
+  "agent_version_id": "db986d8b-d6ac-411e-87f9-37427871b2e6",
+  "medido_em": "2026-08-06T16:18:09.380Z"
 }

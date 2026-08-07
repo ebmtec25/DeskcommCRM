@@ -52,7 +52,7 @@ import { MIRROR_WARN_ONLY, mirrorLeadStageToCrm } from '../edge/crm/move-lead-st
 import { garanteLeadParaContato } from '@/lib/leads/ensure-lead-for-contact';
 import { insertInboxItem } from '../db/repository';
 import { buildNativeMediaParts } from './media-parts';
-import type { JobRow, Queryable } from '../queue/queue';
+import { enqueueJob, type JobRow, type Queryable } from '../queue/queue';
 import { applyLeadStateUpdate, getLeadState, type LeadStage, type LeadStateRow } from './lead-state';
 import { applySaveLeadNote, buildNotesIndexBlock, getLeadNoteBody } from './lead-notes';
 import { applyScheduleFollowup, type FollowupWindowKnobs } from './schedule-followup';
@@ -73,6 +73,9 @@ import {
   type StageClassifierKnobs,
 } from './stage-classifier';
 import { loadPlaybook } from './playbook';
+import { DECLARACAO_INSTRUCTION, declaracaoDoTurnoSchema, type DeclaracaoDoTurno } from './declaracao';
+import { projetarContexto, projetarRetornoDeTool, turnoProjeta, type ContextoProjetado } from './projecao';
+import { capacidadesEntreguesAoOperador, catalogoEntregueAoOperador } from './entrega-de-capacidade';
 import { composeSystemPrompt, loadOrgMemory, renderOrgMemory } from './org-memory';
 import { matchesHandoffKeyword } from './agent-config';
 import { resolveTurnAgent } from './resolve-turn-agent';
@@ -308,24 +311,56 @@ export const checkpointContentSchema = z.object({
   objections: z.array(z.string()).default([]),
   next_action: z.string().nullable().default(null),
   rolling_summary: z.string().default(''),
+  /**
+   * A declaração do turno (spec 16 §5) — a fronteira entre FALAR e OPERAR.
+   *
+   * `.optional()` SEM default, e a diferença importa: `undefined` significa que o
+   * modelo não declarou nada (fechamento incompleto — turno a investigar), e é
+   * estado distinto de `{nada_a_declarar: true}`, que é uma avaliação registrada.
+   * Um `.default({})` aqui apagaria essa distinção e faria "o modelo esqueceu"
+   * parecer "não havia nada" — ver o cabeçalho de `declaracao.ts`.
+   *
+   * Opcional também é o que mantém a retrocompatibilidade: checkpoint gravado
+   * antes desta versão, e clone self-host cujo modelo ainda não conhece o campo,
+   * seguem validando.
+   */
+  declaracao: declaracaoDoTurnoSchema.optional(),
 });
 export type CheckpointContent = z.infer<typeof checkpointContentSchema>;
 
-export interface LeadCheckpointRow extends CheckpointContent {
+/**
+ * A ROW como o Postgres a devolve. `declaracao` é `Omit`-ada e redeclarada porque
+ * o "não sei" tem representação DIFERENTE nas duas pontas: o modelo omite o campo
+ * (`undefined`), o banco guarda `null`. Herdar o `?:` do schema faria o tipo
+ * prometer `undefined` onde `select *` entrega `null` — e o `=== undefined` de
+ * quem lesse a row seria falso justamente no caso que ele quer pegar.
+ */
+export interface LeadCheckpointRow extends Omit<CheckpointContent, 'declaracao'> {
   id: string;
   seq: string;
   organization_id: string;
   contact_id: string;
   job_id: string | null;
   created_at: Date;
+  declaracao: DeclaracaoDoTurno | null;
 }
 
-/** Instrução FIXA do fechamento — o runtime a impõe; o teste a usa como marcador. */
+/**
+ * Instrução FIXA do fechamento — o runtime a impõe; o teste a usa como marcador.
+ *
+ * A declaração (spec 16 §5) viaja AQUI, na chamada que já acontece, e não numa
+ * tool: uma `declarar_intencao` dependeria de o modelo lembrar de chamá-la, e o
+ * turno em que ele esquecesse seria um lead parado em silêncio. É o mesmo
+ * argumento que este arquivo já usa para o checkpoint — e sai de graça, porque
+ * é a mesma chamada de modelo.
+ */
 export const CHECKPOINT_INSTRUCTION =
   'Feche o turno AGORA. Responda SOMENTE com um JSON válido no formato ' +
   '{"commitments": string[], "objections": string[], "next_action": string|null, "rolling_summary": string} ' +
   '— compromissos assumidos, objeções do lead, próxima ação e o resumo acumulado ' +
-  'da conversa até aqui (inclua o que o resumo anterior já dizia). Sem texto fora do JSON.';
+  'da conversa até aqui (inclua o que o resumo anterior já dizia). ' +
+  DECLARACAO_INSTRUCTION +
+  ' Sem texto fora do JSON.';
 
 /**
  * Bloco de sistema RESIDENTE das tools de caso (spec 15 §5.2) — entra no prefixo
@@ -462,8 +497,8 @@ async function insertCheckpoint(
   input: { tenantId: string; leadId: string; jobId: string; content: CheckpointContent },
 ): Promise<void> {
   await db.query(
-    `insert into lead_checkpoints (organization_id, contact_id, job_id, commitments, objections, next_action, rolling_summary)
-     values ($1, $2, $3, $4, $5, $6, $7)`,
+    `insert into lead_checkpoints (organization_id, contact_id, job_id, commitments, objections, next_action, rolling_summary, declaracao)
+     values ($1, $2, $3, $4, $5, $6, $7, $8)`,
     [
       input.tenantId,
       input.leadId,
@@ -472,6 +507,11 @@ async function insertCheckpoint(
       JSON.stringify(input.content.objections),
       input.content.next_action,
       input.content.rolling_summary,
+      // NULL (não `'{}'`) quando o modelo não declarou: a coluna preserva a
+      // distinção "não declarou" × "declarou que não havia nada" que o schema
+      // sustenta em memória. Gravar um objeto vazio aqui jogaria fora, no
+      // Postgres, a informação que o Zod tomou o cuidado de manter.
+      input.content.declaracao === undefined ? null : JSON.stringify(input.content.declaracao),
     ],
   );
 }
@@ -511,6 +551,13 @@ export function ritualBlocks(
   leadState: LeadStateRow | null,
   context: LeadContext,
   notesIndexBlock: string,
+  /**
+   * Projetar o contexto (spec 16 §4)? Default `false` para não mudar em silêncio
+   * o prompt de quem já chama isto (follow-up, resposta de caso) — cada chamador
+   * liga quando souber responder a pergunta que a projeção faz: "este turno
+   * consegue usar um id para alguma coisa?".
+   */
+  projeta = false,
 ): string[] {
   const checkpointBlock = previous
     ? JSON.stringify({
@@ -536,7 +583,13 @@ export function ritualBlocks(
     '## Resumo acumulado da conversa',
     summaryBlock,
     '',
-    '## Estado do funil (lead_state)',
+    // Era "## Estado do funil (lead_state)". O nome da tabela no cabeçalho era
+    // vazamento gratuito — o modelo o lê e o repete, que é a porta 2 medida, só
+    // que sem nem precisar de uma ferramenta para carregá-la. O CONTEÚDO deste
+    // bloco (stage: 'qualifying') continua sendo vocabulário interno e continua
+    // aqui: `update_lead_state` precisa dele para marcar o próximo estágio.
+    // Sai no passo 6 da spec 16, junto com a ferramenta. Dívida declarada.
+    '## Estado do funil',
     stateBlock,
     '',
     // Índice da memória durável do lead (F3-05): headlines + id, orçamento fixo. O
@@ -546,26 +599,50 @@ export function ritualBlocks(
     notesIndexBlock,
     '',
     '## Contexto do lead (contato + últimas mensagens)',
-    JSON.stringify(context),
+    // A projeção (spec 16 §4) fecha a terceira porta: sem ela, `lead_id`,
+    // `conversation_id` e `media_storage_path` chegam crus ao prompt — e UUID
+    // cru na tela do cliente foi MEDIDO. Ela só arma quando o turno não tem
+    // ferramenta de catálogo (ver `turnoProjeta`), porque é aí que esses ids
+    // não têm uso nenhum. Nos demais, quem cobre é o gate de saída.
+    JSON.stringify(projeta ? projetarContexto(context) : context),
   ];
 }
 
 /** Abertura determinística do run inbound — o ritual em texto (pt-br). */
-function buildOpeningMessage(
+export function buildOpeningMessage(
   previous: LeadCheckpointRow | null,
   leadState: LeadStateRow | null,
   context: LeadContext,
   notesIndexBlock: string,
+  projeta = false,
+  /**
+   * Ferramentas que saíram para o Operador (spec 16, passo 6). O prompt PRECISA
+   * deixar de citá-las — e esta é a parte que É a cura, não um acabamento.
+   *
+   * Remover a ferramenta e manter a instrução produziria o pior dos dois mundos:
+   * o modelo tentaria chamar o que não existe, gastaria passo com o erro, E o
+   * NOME continuaria no contexto — que é exatamente por onde o vazamento voltou
+   * quando limparam só a descrição (`crm_list_webhook_sources`, medido).
+   */
+  entregues: readonly string[] = [],
 ): string {
+  const entregue = (nome: string): boolean => entregues.includes(nome);
   return [
     'Novo turno de atendimento: o lead enviou uma mensagem (a última inbound do histórico abaixo).',
     '',
-    ...ritualBlocks(previous, leadState, context, notesIndexBlock),
+    ...ritualBlocks(previous, leadState, context, notesIndexBlock, projeta),
     '',
     'Responda ao lead usando a tool send_message — NUNCA escreva a resposta como texto direto',
     '(texto fora de tool é descartado pelo runtime). Use get_lead_context se precisar reler o contexto.',
-    'Houve avanço REAL no funil neste turno? Marque-o com update_lead_state (só o próximo estágio válido).',
-    'Aprendeu algo durável sobre o lead? Salve com save_lead_note (a headline entra no índice de memória).',
+    // Quando o avanço do funil vira trabalho do Operador, o Conversador não
+    // precisa saber que existe um funil. É a diferença entre "não fale disso" e
+    // "não há disso no seu contexto" — a segunda não depende de obediência.
+    ...(entregue('update_lead_state')
+      ? []
+      : ['Houve avanço REAL no funil neste turno? Marque-o com update_lead_state (só o próximo estágio válido).']),
+    ...(entregue('save_lead_note')
+      ? []
+      : ['Aprendeu algo durável sobre o lead? Salve com save_lead_note (a headline entra no índice de memória).']),
   ].join('\n');
 }
 
@@ -588,6 +665,22 @@ export interface AgentTurnInput {
     context: LeadContext;
     /** índice da memória do lead (F3-05), já dentro do orçamento; vai no sufixo. */
     notesIndexBlock: string;
+    /**
+     * Projetar o contexto (spec 16 §4)? Decidido pelo turno, ver `turnoProjeta`.
+     *
+     * OPCIONAL no tipo, e a razão é externa ao desenho: `tests/invariants/**` é
+     * congelado por hook de governança, e torná-lo obrigatório forçaria a editar
+     * um invariante existente só para satisfazer o compilador — o que a catraca
+     * proíbe, com razão. `runAgentTurn` SEMPRE o passa; o opcional só existe para
+     * quem constrói um ritual à mão (testes).
+     *
+     * O custo está registrado: um chamador novo que esqueça o campo não projeta,
+     * em silêncio. A direção do esquecimento é a segura (comportamento de hoje,
+     * com o gate de saída cobrindo), mas é esquecimento mesmo assim.
+     */
+    projeta?: boolean;
+    /** ferramentas que saíram para o Operador — o prompt não pode citá-las. */
+    entregues?: readonly string[];
   }) => string;
 }
 
@@ -945,6 +1038,10 @@ export async function runAgentTurn(
           objections: [],
           next_action: null,
           rolling_summary: '',
+          // Este `previous` é sintetizado a partir de histórico IMPORTADO — não
+          // houve turno nosso, logo ninguém declarou nada. `null` é o valor
+          // honesto; um objeto vazio afirmaria uma avaliação que não aconteceu.
+          declaracao: null,
         };
       effectivePrevious = { ...base, rolling_summary: renderCompactedSummary(compacted) };
       effectiveContext = {
@@ -1089,17 +1186,55 @@ export async function runAgentTurn(
     runLog.warn('skill_activations não gravadas', { error: (err instanceof Error ? err.message : String(err)).slice(0, 120) });
   }
 
+  /**
+   * Os ids de catálogo que de fato ENTRARAM neste turno — não os que a tela
+   * marcou. A diferença importa: quando a montagem falha, o turno segue sem elas,
+   * e é o turno REAL que decide se a projeção arma. Ler a config aqui faria a
+   * projeção ficar desligada num turno que, por acidente, não recebeu ferramenta
+   * nenhuma — justo o turno em que ela é gratuita.
+   *
+   * Declarado ANTES de `rawTools` de propósito: o `execute` de `get_lead_context`
+   * fecha sobre ele e o lê no momento da CHAMADA, quando as ferramentas de
+   * catálogo já foram montadas (o `push` acontece bem abaixo, antes do loop do
+   * modelo). Deixá-lo declarado depois funcionaria, mas esconderia a ordem de que
+   * a correção depende.
+   */
+  const mcpToolIdsDoTurno: string[] = [];
+
   const rawTools: ToolSet = {
     get_lead_context: tool({
       ...AGENT_TOOL_DEFS.get_lead_context,
-      execute: async (): Promise<LeadContextResult | { ok: false; error: { code: string; message: string } }> => {
+      execute: async (): Promise<
+        | LeadContextResult
+        // A variante PROJETADA é um tipo próprio, não um `LeadContext` disfarçado
+        // por cast: são payloads diferentes, e um `as` aqui faria o compilador
+        // parar de vigiar exatamente a fronteira que este código existe para
+        // manter. Note que `lgpd` não viaja nela — base legal e anonimização são
+        // dado de conformidade que o runtime usa nos gates, e que o modelo nunca
+        // precisou ler (no caminho não-projetado ele já ia junto; aqui para).
+        | { ok: true; context: ContextoProjetado; tokenCount: number }
+        | { ok: false; error: { code: string; message: string } }
+      > => {
         try {
-          return await getLeadContext(
+          const releitura = await getLeadContext(
             pool,
             deps.crmCfg,
             { tenantId, leadId, conversationId: input.conversationId },
             turnContextKnobs,
           );
+          // Sem esta linha a projeção da abertura seria decorativa: bastaria o
+          // modelo chamar esta ferramenta para receber o contexto CRU de volta,
+          // com `lead_id`, `conversation_id` e caminho de mídia. A releitura é a
+          // mesma superfície da abertura e tem de obedecer à mesma regra —
+          // proteger só a porta da frente é não ter protegido.
+          if (releitura.ok && turnoProjeta(mcpToolIdsDoTurno)) {
+            return {
+              ok: true,
+              context: projetarContexto(releitura.context),
+              tokenCount: releitura.tokenCount,
+            };
+          }
+          return releitura;
         } catch (err) {
           // bug de programação: ensina o modelo a encerrar E derruba o job no fim
           noteRunError(err instanceof Error ? err : new Error(String(err)));
@@ -1230,9 +1365,16 @@ export async function runAgentTurn(
           jobId: job.id,
         }, { log: runLog });
         if (out.ok && out.results.length > 0) {
+          // As citações são montadas AQUI, pelo código, a partir do resultado
+          // cru — é por isso que os ids podem sair do que vai ao modelo sem
+          // perder nada: quem precisa deles é esta linha, não o modelo.
           pendingCitations = citationsFromHits(out.results);
         }
-        return out;
+        // `chunk_id` e `knowledge_source_id` viajavam CRUS para o modelo em toda
+        // busca com RAG — dois UUIDs por resultado, sem uso nenhum do lado dele
+        // (nenhuma ferramenta os aceita como argumento). UUID cru na resposta ao
+        // cliente foi MEDIDO nesta base; esta era uma fonte silenciosa dele.
+        return turnoProjeta(mcpToolIdsDoTurno) ? projetarRetornoDeTool(out) : out;
       },
     }),
     send_message: tool({
@@ -1753,12 +1895,28 @@ export async function runAgentTurn(
   let mcpCleanup: (() => Promise<void>) | null = null;
   if (agentConfig !== null && agentConfig.toolIds.length > 0) {
     try {
-      const mcp = await buildMcpTurnTools(deps.crmCfg, { organizationId: tenantId, jobId: job.id }, agentConfig, runLog);
+      // As de OPERAÇÃO saem antes de serem montadas, quando o Operador as tem.
+      // Medido: são elas que carregavam 2 dos 3 vazamentos (o DADO que devolvem),
+      // e tirá-las levou a taxa de 30% para 10% — ver RELATORIO-passo6.md.
+      const catalogoEntregue = catalogoEntregueAoOperador({
+        operadorLigado: agentConfig.operatorEnabled,
+        ferramentasDoOperador: agentConfig.operatorToolIds,
+        ferramentasDoConversador: agentConfig.toolIds,
+      });
+      const configDoTurno =
+        catalogoEntregue.length === 0
+          ? agentConfig
+          : { ...agentConfig, toolIds: agentConfig.toolIds.filter((t) => !catalogoEntregue.includes(t)) };
+      if (catalogoEntregue.length > 0) {
+        runLog.info('capacidades de catálogo entregues ao operador', { entregues: catalogoEntregue });
+      }
+      const mcp = await buildMcpTurnTools(deps.crmCfg, { organizationId: tenantId, jobId: job.id }, configDoTurno, runLog);
       if (mcp !== null) {
         mcpCleanup = mcp.cleanup;
         for (const [name, mcpTool] of Object.entries(mcp.tools)) {
           if (!(name in rawTools)) rawTools[name] = mcpTool;
         }
+        mcpToolIdsDoTurno.push(...mcp.toolIds);
         runLog.info('tools MCP da tela montadas no turno', { mcp_tool_ids: mcp.toolIds });
       }
     } catch (err) {
@@ -1776,6 +1934,26 @@ export async function runAgentTurn(
       runLog.error('tools MCP da tela não montadas — turno segue sem elas', { error: detalhe });
       await avisarCapacidadesAusentes(pool, tenantId, input.conversationId, detalhe, runLog);
     }
+  }
+
+  // ── A CURA (spec 16, passo 6) ───────────────────────────────────────────────
+  //
+  // As ferramentas de escrita saem do Conversador quando o Operador as assumiu.
+  // O gate de vazamento é rede — barra na saída e ensina; isto é a cura: o
+  // modelo não pode repetir o nome de uma ferramenta que nunca viu, e foi pelo
+  // NOME que o vazamento voltou depois de a descrição ser limpa.
+  //
+  // A remoção é CONDICIONAL a o novo dono existir (ver entrega-de-capacidade):
+  // tirar de um lado sem garantir o outro não separa papéis, perde capacidade.
+  const entregues = capacidadesEntreguesAoOperador({
+    operadorLigado: agentConfig?.operatorEnabled ?? false,
+    ferramentasDoOperador: agentConfig?.operatorToolIds ?? [],
+  });
+  for (const nome of entregues) delete rawTools[nome];
+  if (entregues.length > 0) {
+    runLog.info('capacidades entregues ao operador — fora do turno do conversador', {
+      entregues,
+    });
   }
 
   // Circuit breaker de tools (F2-15): estado no closure DESTA invocação — zera
@@ -1836,11 +2014,22 @@ export async function runAgentTurn(
     }
   }
 
+  // Spec 16 §4: a projeção arma quando NENHUMA ferramenta de catálogo entrou —
+  // é exatamente o turno em que os ids do contexto não têm uso, e portanto o
+  // único em que removê-los não custa nada. Logado porque "por que o prompt
+  // deste turno é diferente do daquele?" precisa ter resposta no trace.
+  const projetaContexto = turnoProjeta(mcpToolIdsDoTurno);
+  runLog.info('projeção do contexto do turno', {
+    projeta: projetaContexto,
+    mcp_tools_no_turno: mcpToolIdsDoTurno.length,
+  });
   const openingBase = input.buildOpening({
     previous: effectivePrevious,
     leadState,
     context: effectiveContext,
     notesIndexBlock,
+    projeta: projetaContexto,
+    entregues,
   });
   // Sufixos por-lead (situacionais, voláteis — depois do prefixo cacheável F2-17): corpos de
   // skill casadas (F3-09) + hint do classificador (F3-11) + instrução de split (F4-xx, quando
@@ -1974,6 +2163,38 @@ export async function runAgentTurn(
   // faria a seguir.
   const checkpointAnterior = await latestCheckpoint(pool, tenantId, leadId);
   await insertCheckpoint(pool, { tenantId, leadId, jobId: job.id, content });
+
+  // ── O TURNO DO OPERADOR (spec 16 §3.2) ─────────────────────────────────────
+  //
+  // Enfileirado AQUI, pelo RUNTIME, logo depois de o checkpoint existir — nunca
+  // por decisão do modelo. Um Conversador que "chama" o Operador devolveria o
+  // problema inteiro: voltaria a depender de o modelo lembrar, e o turno em que
+  // ele não achasse necessário seria um lead parado no funil, em silêncio.
+  //
+  // Depois do checkpoint porque a declaração É o insumo do Operador; enfileirar
+  // antes criaria uma corrida em que ele leria o checkpoint do turno ANTERIOR e
+  // agiria sobre um turno que não é o seu.
+  //
+  // Fire-and-forget: falha ao enfileirar NÃO derruba um turno que já respondeu
+  // ao cliente. O `sourceEventId` é o job do Conversador, então o retry da fila
+  // não gera um segundo Operador para o mesmo turno.
+  try {
+    const { deduped } = await enqueueJob(pool, tenantId, {
+      kind: 'operator_turn',
+      leadId,
+      sourceEventId: job.id,
+      payload: {
+        conversation_id: input.conversationId,
+        origin_job_id: job.id,
+        agent_id: agentConfig?.agentId ?? null,
+      },
+    });
+    runLog.info('turno do operador enfileirado', { deduped });
+  } catch (err) {
+    runLog.error('turno do operador NÃO foi enfileirado (o turno segue)', {
+      error: (err instanceof Error ? err.message : String(err)).slice(0, 120),
+    });
+  }
 
   const mudanca = diffCheckpoint(
     checkpointAnterior
@@ -2125,8 +2346,8 @@ export function createInboundTurnHandler(deps: InboundTurnDeps) {
     await runAgentTurn(deps, job, pool, ctx, {
       channelSessionId: payload.channel_session_id,
       conversationId: payload.conversation_id,
-      buildOpening: ({ previous, leadState, context, notesIndexBlock }) =>
-        buildOpeningMessage(previous, leadState, context, notesIndexBlock),
+      buildOpening: ({ previous, leadState, context, notesIndexBlock, projeta, entregues }) =>
+        buildOpeningMessage(previous, leadState, context, notesIndexBlock, projeta, entregues),
     });
   };
 }

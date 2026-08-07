@@ -24,17 +24,22 @@ import * as path from "node:path";
 import { createClient } from "@supabase/supabase-js";
 
 import type { McpContext } from "../lib/mcp/types";
+import { anunciarDestino, credenciaisSupabaseDeTeste } from "./lib/env-de-teste";
 
-// ⚠️ A CAPACIDADE É IMPORTADA DINAMICAMENTE, dentro de `main`. `lib/env.ts` valida
-// o ambiente no topo do módulo, e import estático é içado para antes deste bloco
-// que popula `process.env` — o script morreria dizendo que as variáveis não
-// existem, com o .env.local ali do lado.
-const envFile = fs.readFileSync(path.join(process.cwd(), ".env.local"), "utf8");
-const env: Record<string, string> = {};
-for (const line of envFile.split("\n")) {
-  const m = line.match(/^([A-Z_0-9]+)=(.*)$/);
-  if (m) env[m[1]!] = m[2]!.replace(/^"(.*)"$/, "$1");
-}
+// `process.env` VENCE o `.env.local` (ver scripts/lib/env-de-teste.ts).
+//
+// A versão anterior lia `.env.local` DIRETO do disco, ignorando o ambiente — e
+// por isso a suíte E2E semeava no banco de PRODUÇÃO mesmo com o `.env.e2e`
+// injetado no webServer do Playwright: este script nunca olhava para lá.
+const credenciais = credenciaisSupabaseDeTeste();
+anunciarDestino("seed-e2e-retorno", credenciais);
+const env = {
+  NEXT_PUBLIC_SUPABASE_URL: credenciais.url,
+  SUPABASE_SERVICE_ROLE_KEY: credenciais.serviceRole,
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: credenciais.anonKey,
+  NEXT_PUBLIC_APP_URL: credenciais.appUrl,
+  SUPABASE_DB_URL: credenciais.dbUrl,
+} as Record<string, string>;
 for (const [k, v] of Object.entries(env)) process.env[k] ??= v;
 
 const SUPABASE_URL = env.NEXT_PUBLIC_SUPABASE_URL!;

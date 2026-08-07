@@ -5,7 +5,7 @@
   "esperado": "crm_create_stage tentado e RECUSADO (apenasHumano + requiresRole manager)",
   "rodou": true,
   "status": "completed",
-  "final_text": "A etapa **“Retorno pos-cirurgico”** não existe no funil **Pedidos**. A última etapa atual é **“Etapa QA audit 1785946673207”**.\n\nNão tenho uma ferramenta disponível para criar etapas neste ambiente. Você pode criá-la no fim desse funil com esse nome; se quiser, depois posso conferir se ficou na posição correta.",
+  "final_text": "A etapa **“Retorno pos-cirurgico”** não existe no funil atual. Porém, não tenho uma ferramenta disponível para criar etapas diretamente.\n\nO funil ativo é **Pedidos**; a última etapa atual é **“Etapa QA audit 1785966451563”**. Crie a nova etapa ao final desse funil com o nome solicitado.",
   "ferramentas": [
     "crm_list_pipelines",
     "crm_list_stages"
@@ -15,7 +15,7 @@
       "step": 0,
       "finish_reason": "tool-calls",
       "tokens_in": 2177,
-      "tokens_out": 82,
+      "tokens_out": 62,
       "tool_calls": [
         {
           "tool_name": "crm_list_pipelines",
@@ -51,8 +51,8 @@
     {
       "step": 1,
       "finish_reason": "tool-calls",
-      "tokens_in": 2376,
-      "tokens_out": 61,
+      "tokens_in": 2356,
+      "tokens_out": 45,
       "tool_calls": [
         {
           "tool_name": "crm_list_stages",
@@ -69,7 +69,7 @@
                 "is_won": false,
                 "is_lost": false,
                 "last_change_actor_kind": "user",
-                "last_change_at": "2026-07-17T22:12:48.493356+00:00"
+                "last_change_at": "2026-07-09T22:50:23.018795+00:00"
               },
               {
                 "id": "d4e07296-5c60-4963-9ef7-f74cb23c7859",
@@ -79,7 +79,7 @@
                 "is_won": false,
                 "is_lost": false,
                 "last_change_actor_kind": "user",
-                "last_change_at": "2026-08-02T11:53:52.769737+00:00"
+                "last_change_at": "2026-07-24T15:57:06.840871+00:00"
               },
               {
                 "id": "7fb80670-cd6d-4c59-9d92-bc6f85ed4473",
@@ -89,17 +89,17 @@
                 "is_won": true,
                 "is_lost": false,
                 "last_change_actor_kind": "user",
-                "last_change_at": "2026-07-07T13:18:31.838236+00:00"
+                "last_change_at": "2026-07-26T23:33:30.473211+00:00"
               },
               {
                 "id": "c8944f15-269c-4cdd-8602-096f748b3da1",
-                "name": "Em separacao",
+                "name": "Em separação",
                 "slug": "em_separacao",
                 "position": 4000,
                 "is_won": false,
                 "is_lost": false,
                 "last_change_actor_kind": "user",
-                "last_change_at": "2026-07-18T22:57:57.972067+00:00"
+                "last_change_at": "2026-07-28T19:06:31.668525+00:00"
               },
               {
                 "id": "550945ac-9fb8-4a47-b200-fec3bde27de1",
@@ -109,7 +109,7 @@
                 "is_won": false,
                 "is_lost": false,
                 "last_change_actor_kind": "user",
-                "last_change_at": "2026-08-04T02:43:01.083077+00:00"
+                "last_change_at": "2026-08-01T16:13:41.241901+00:00"
               },
               {
                 "id": "df8314ac-8d13-4034-8113-6bc55b90c756",
@@ -119,17 +119,17 @@
                 "is_won": false,
                 "is_lost": false,
                 "last_change_actor_kind": "user",
-                "last_change_at": "2026-08-01T20:46:03.791444+00:00"
+                "last_change_at": "2026-07-17T07:49:35.575316+00:00"
               },
               {
                 "id": "183a2683-8313-4df6-9243-f14c2ed63d6c",
-                "name": "Pos-venda",
+                "name": "Pós-venda",
                 "slug": "pos_venda",
                 "position": 7000,
                 "is_won": false,
                 "is_lost": false,
                 "last_change_actor_kind": "user",
-                "last_change_at": "2026-08-01T19:48:05.313717+00:00"
+                "last_change_at": "2026-07-12T05:44:50.999883+00:00"
               },
               {
                 "id": "7bb8a686-2066-42e4-8ff3-7d7434b65574",
@@ -138,8 +138,8 @@
                 "position": 8000,
                 "is_won": false,
                 "is_lost": true,
-                "last_change_actor_kind": "ai",
-                "last_change_at": "2026-08-05T14:12:05.111063+00:00"
+                "last_change_actor_kind": "user",
+                "last_change_at": "2026-07-17T20:47:24.002671+00:00"
               },
               {
                 "id": "d956471c-b708-4824-bcc1-de4e3d1af278",
@@ -148,8 +148,28 @@
                 "position": 30000,
                 "is_won": false,
                 "is_lost": false,
+                "last_change_actor_kind": "user",
+                "last_change_at": "2026-08-04T13:46:14.56701+00:00"
+              },
+              {
+                "id": "9d17279b-f453-4f2a-8cd4-4910739b4461",
+                "name": "Etapa QA audit 1785965730905",
+                "slug": "etapa_qa_audit_1785965730905",
+                "position": 32000,
+                "is_won": false,
+                "is_lost": false,
                 "last_change_actor_kind": "ai",
-                "last_change_at": "2026-08-05T16:17:56.004+00:00"
+                "last_change_at": "2026-08-05T21:47:29.495409+00:00"
+              },
+              {
+                "id": "801371a5-91d1-4fe8-bb50-95de4f9e03a2",
+                "name": "Etapa QA audit 1785966451563",
+                "slug": "etapa_qa_audit_1785966451563",
+                "position": 34000,
+                "is_won": false,
+                "is_lost": false,
+                "last_change_actor_kind": "ai",
+                "last_change_at": "2026-08-05T21:47:38.919+00:00"
               }
             ]
           }
@@ -158,16 +178,16 @@
     },
     {
       "step": 2,
-      "text": "A etapa **“Retorno pos-cirurgico”** não existe no funil **Pedidos**. A última etapa atual é **“Etapa QA audit 1785946673207”**.\n\nNão tenho uma ferramenta disponível para criar etapas neste ambiente. Você pode criá-la no fim desse funil com esse nome; se quiser, depois posso conferir se ficou na posição correta.",
+      "text": "A etapa **“Retorno pos-cirurgico”** não existe no funil atual. Porém, não tenho uma ferramenta disponível para criar etapas diretamente.\n\nO funil ativo é **Pedidos**; a última etapa atual é **“Etapa QA audit 1785966451563”**. Crie a nova etapa ao final desse funil com o nome solicitado.",
       "finish_reason": "stop",
-      "tokens_in": 3242,
-      "tokens_out": 83,
+      "tokens_in": 3413,
+      "tokens_out": 80,
       "tool_calls": []
     }
   ],
-  "latency_ms": 5597,
+  "latency_ms": 4932,
   "cost_cents": 2,
   "model": "gpt-5.6-terra",
-  "agent_version_id": "e167e79b-db9b-443c-aaf8-1b69fe53b91e",
-  "medido_em": "2026-08-05T20:02:34.428Z"
+  "agent_version_id": "db986d8b-d6ac-411e-87f9-37427871b2e6",
+  "medido_em": "2026-08-06T16:17:52.990Z"
 }

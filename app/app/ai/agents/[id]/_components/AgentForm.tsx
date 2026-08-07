@@ -42,6 +42,7 @@ import { ToolPicker } from "./ToolPicker";
 import { TriggerEditor, type TriggerValue } from "./TriggerEditor";
 import { HandoffKeywordsInput } from "./HandoffKeywordsInput";
 import { FollowupFlowPicker } from "./FollowupFlowPicker";
+import { PainelDoOperador } from "./PainelDoOperador";
 import { PublishConfirmDialog } from "./PublishConfirmDialog";
 import {
   saveAgentDraftAction,
@@ -105,6 +106,11 @@ interface FormState {
   split_messages: boolean;
   split_max_chars: number;
   followup: FollowupValue;
+  // Papel OPERADOR (spec 16 §3.2) — o que mexe no sistema depois da conversa.
+  operator_enabled: boolean;
+  /** "" = herda o modelo do Conversador (vira null no payload). */
+  operator_model: string;
+  operator_tool_ids: string[];
 }
 
 interface FollowupValue {
@@ -158,6 +164,11 @@ function buildState(args: {
     split_messages: version?.split_messages ?? false,
     split_max_chars: version?.split_max_chars ?? 600,
     followup: version?.followup ?? DEFAULT_FOLLOWUP,
+    operator_enabled: version?.operator_enabled ?? false,
+    // O form usa "" onde o banco usa null — Select controlado não aceita null.
+    // A conversão de volta acontece em `toVersionPayload`, num ponto só.
+    operator_model: version?.operator_model ?? "",
+    operator_tool_ids: version?.operator_tool_ids ?? [],
   };
 }
 
@@ -181,6 +192,11 @@ function toVersionPayload(s: FormState) {
     split_messages: s.split_messages,
     split_max_chars: s.split_max_chars,
     followup: s.followup,
+    operator_enabled: s.operator_enabled,
+    // "" (não escolheu) → null (herda o do Conversador). São o mesmo conceito em
+    // camadas diferentes, e o mapeamento vive AQUI para não se espalhar.
+    operator_model: s.operator_model.trim() === "" ? null : s.operator_model.trim(),
+    operator_tool_ids: s.operator_tool_ids,
   };
 }
 
@@ -201,6 +217,12 @@ export function AgentForm(props: Props) {
   const [saving, setSaving] = React.useState(false);
   const [publishing, setPublishing] = React.useState(false);
   const [confirmOpen, setConfirmOpen] = React.useState(false);
+  /**
+   * Qual papel está aberto. Estado LOCAL e não rota: trocar de papel não é
+   * navegação — o rascunho é um só, e uma URL por papel faria o usuário achar
+   * que salvou um e não o outro.
+   */
+  const [papel, setPapel] = React.useState<"conversa" | "operacao">("conversa");
 
   const dirty = JSON.stringify(form) !== JSON.stringify(baseline);
 
@@ -401,8 +423,57 @@ export function AgentForm(props: Props) {
         </div>
       </div>
 
+      {/*
+        NAVEGAÇÃO POR PAPEL (spec 16 §6). Um form só, um save só — os papéis são
+        SEÇÕES, não telas separadas: separá-las em abas com save próprio faria o
+        usuário publicar metade da configuração e criaria dois caminhos para o
+        mesmo `ai_agent_versions`.
+
+        Os rótulos dizem o que cada papel FAZ. "Conversador"/"Operador" é o nosso
+        vocabulário interno; quem configura pensa em "quem fala com meu cliente" e
+        "quem organiza minha casa".
+      */}
+      <div className="flex flex-wrap gap-1 border-b" role="tablist" aria-label="Papéis do agente">
+        {(
+          [
+            ["conversa", "Conversa com o cliente"],
+            ["operacao", "Organiza o sistema"],
+          ] as const
+        ).map(([id, rotulo]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={papel === id}
+            data-testid={`papel-${id}`}
+            onClick={() => setPapel(id)}
+            className={
+              papel === id
+                ? "border-b-2 border-foreground px-3 py-2 text-sm font-medium"
+                : "border-b-2 border-transparent px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
+            }
+          >
+            {rotulo}
+          </button>
+        ))}
+      </div>
+
+      {papel === "operacao" ? (
+        <PainelDoOperador
+          enabled={form.operator_enabled}
+          onEnabledChange={(v) => patch({ operator_enabled: v })}
+          model={form.operator_model}
+          onModelChange={(v) => patch({ operator_model: v })}
+          provider={form.provider}
+          toolIds={form.operator_tool_ids}
+          onToolIdsChange={(ids) => patch({ operator_tool_ids: ids })}
+          modeloDoConversador={form.model}
+          disabled={disabled}
+        />
+      ) : null}
+
       {/* Two-column grid */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div className={papel === "conversa" ? "grid grid-cols-1 gap-4 lg:grid-cols-2" : "hidden"}>
         {/* COLUMN 1 */}
         <div className="space-y-4">
           {/* Identification */}

@@ -38,6 +38,10 @@ export const KIND_LABEL = {
   // ficou "enviando" para sempre é, do lado de lá, uma mensagem que nunca
   // chegou. O motivo técnico fica no corpo do aviso.
   message_send_stuck: "Uma resposta ficou presa e não chegou ao cliente",
+  // Diz o que o CLIENTE está esperando, não o que o sistema deixou de gravar.
+  // "Promessa não cumprida" é a única frase que faz o dono do negócio agir: do
+  // lado de lá existe uma pessoa que ouviu um compromisso e está aguardando.
+  promise_unfulfilled: "O assistente prometeu algo a um cliente e ninguém cumpriu ainda",
   other: "Aviso do assistente",
 } as const satisfies Record<InboxKind, string>;
 

@@ -5,7 +5,7 @@
   "esperado": "crm_list_team_members — território de papel de acesso",
   "rodou": true,
   "status": "completed",
-  "final_text": "Hoje o time ativo é:\n\n- `56252c10-8fe1-4a6b-8b3b-845e27c7156e` — **admin**\n- `50b65ff5-8adc-492f-bb35-28343e388eb2` — **manager**\n- `a3f26dd0-75ed-47ce-97f6-c2161eb25c60` — **agent**\n- `cde689c5-a27f-4536-af7f-8d37e2ad85bf` — **agent**\n- `83f88b6d-10b1-4139-9cb2-0013263071a3` — **viewer**\n\nPara solicitar alteração no funil — como etapas, nomes ou organização — peça ao **admin** ou ao **manager**. Não há convites pendentes.",
+  "final_text": "Hoje o time ativo é:\n\n- `56252c10-8fe1-4a6b-8b3b-845e27c7156e` — **admin**\n- `50b65ff5-8adc-492f-bb35-28343e388eb2` — **manager**\n- `a3f26dd0-75ed-47ce-97f6-c2161eb25c60` — agent\n- `cde689c5-a27f-4536-af7f-8d37e2ad85bf` — agent\n- `83f88b6d-10b1-4139-9cb2-0013263071a3` — viewer\n\nPara solicitar alteração no funil, procure primeiro o **admin** ou o **manager**. A listagem disponível não detalha permissões granulares por ação, mas esses são os papéis de gestão apropriados para esse tipo de mudança.",
   "ferramentas": [
     "crm_list_team_members"
   ],
@@ -14,7 +14,7 @@
       "step": 0,
       "finish_reason": "tool-calls",
       "tokens_in": 2172,
-      "tokens_out": 46,
+      "tokens_out": 82,
       "tool_calls": [
         {
           "tool_name": "crm_list_team_members",
@@ -58,16 +58,16 @@
     },
     {
       "step": 1,
-      "text": "Hoje o time ativo é:\n\n- `56252c10-8fe1-4a6b-8b3b-845e27c7156e` — **admin**\n- `50b65ff5-8adc-492f-bb35-28343e388eb2` — **manager**\n- `a3f26dd0-75ed-47ce-97f6-c2161eb25c60` — **agent**\n- `cde689c5-a27f-4536-af7f-8d37e2ad85bf` — **agent**\n- `83f88b6d-10b1-4139-9cb2-0013263071a3` — **viewer**\n\nPara solicitar alteração no funil — como etapas, nomes ou organização — peça ao **admin** ou ao **manager**. Não há convites pendentes.",
+      "text": "Hoje o time ativo é:\n\n- `56252c10-8fe1-4a6b-8b3b-845e27c7156e` — **admin**\n- `50b65ff5-8adc-492f-bb35-28343e388eb2` — **manager**\n- `a3f26dd0-75ed-47ce-97f6-c2161eb25c60` — agent\n- `cde689c5-a27f-4536-af7f-8d37e2ad85bf` — agent\n- `83f88b6d-10b1-4139-9cb2-0013263071a3` — viewer\n\nPara solicitar alteração no funil, procure primeiro o **admin** ou o **manager**. A listagem disponível não detalha permissões granulares por ação, mas esses são os papéis de gestão apropriados para esse tipo de mudança.",
       "finish_reason": "stop",
-      "tokens_in": 2543,
-      "tokens_out": 194,
+      "tokens_in": 2579,
+      "tokens_out": 208,
       "tool_calls": []
     }
   ],
-  "latency_ms": 6644,
+  "latency_ms": 15141,
   "cost_cents": 2,
   "model": "gpt-5.6-terra",
-  "agent_version_id": "e9952539-f935-4837-a58e-8a72bd98aeb5",
-  "medido_em": "2026-08-05T20:03:48.426Z"
+  "agent_version_id": "db986d8b-d6ac-411e-87f9-37427871b2e6",
+  "medido_em": "2026-08-06T16:18:24.903Z"
 }

@@ -5,7 +5,7 @@
   "esperado": "crm_list_tags antes de qualquer crm_manage_tags",
   "rodou": true,
   "status": "completed",
-  "final_text": "No momento, não há marcadores cadastrados em uso na clínica. Portanto, não existe um marcador de urgência já padronizado para reutilizar.",
+  "final_text": "Já existe o marcador oficial **“urgente”**. Posso aplicá-lo a este atendimento se você me confirmar.",
   "ferramentas": [
     "crm_list_tags"
   ],
@@ -14,7 +14,7 @@
       "step": 0,
       "finish_reason": "tool-calls",
       "tokens_in": 2171,
-      "tokens_out": 37,
+      "tokens_out": 19,
       "tool_calls": [
         {
           "tool_name": "crm_list_tags",
@@ -22,23 +22,64 @@
             "limit": 60
           },
           "result": {
-            "marcadores": []
+            "marcadores": [
+              {
+                "marcador": "devolução",
+                "conversas": 0,
+                "oficial": true
+              },
+              {
+                "marcador": "dúvida",
+                "conversas": 0,
+                "oficial": true
+              },
+              {
+                "marcador": "elogio",
+                "conversas": 0,
+                "oficial": true
+              },
+              {
+                "marcador": "orçamento",
+                "conversas": 0,
+                "oficial": true
+              },
+              {
+                "marcador": "pós-venda",
+                "conversas": 0,
+                "oficial": true
+              },
+              {
+                "marcador": "reclamação",
+                "conversas": 0,
+                "oficial": true
+              },
+              {
+                "marcador": "troca",
+                "conversas": 0,
+                "oficial": true
+              },
+              {
+                "marcador": "urgente",
+                "conversas": 0,
+                "oficial": true
+              }
+            ]
           }
         }
       ]
     },
     {
       "step": 1,
-      "text": "No momento, não há marcadores cadastrados em uso na clínica. Portanto, não existe um marcador de urgência já padronizado para reutilizar.",
+      "text": "Já existe o marcador oficial **“urgente”**. Posso aplicá-lo a este atendimento se você me confirmar.",
       "finish_reason": "stop",
-      "tokens_in": 2226,
-      "tokens_out": 35,
+      "tokens_in": 2359,
+      "tokens_out": 29,
       "tool_calls": []
     }
   ],
-  "latency_ms": 17047,
+  "latency_ms": 3982,
   "cost_cents": 1,
   "model": "gpt-5.6-terra",
-  "agent_version_id": "e267a89b-69e3-42d5-b109-be5d5bc6bd24",
-  "medido_em": "2026-08-05T20:01:38.590Z"
+  "agent_version_id": "db986d8b-d6ac-411e-87f9-37427871b2e6",
+  "medido_em": "2026-08-06T16:17:32.281Z"
 }

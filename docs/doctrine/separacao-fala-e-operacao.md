@@ -2,6 +2,14 @@
 
 > Proposta de arquitetura. Nasceu de um defeito medido, não de uma preferência de desenho.
 > Doutrina irmã: [`sistema-vivo.md`](./sistema-vivo.md).
+>
+> **Execução:** [`docs/specs/16-spec-tres-papeis-do-agente.md`](../specs/16-spec-tres-papeis-do-agente.md)
+> — decisões de produto fechadas, contrato, UI e ordem de construção.
+>
+> **O passo 1 está fechado com número** (2026-08-05, `gpt-5.6-terra`, 18 turnos, gate desarmado):
+> **30,0% de vazamento com prompt de operador · 0,0% com prompt de atendimento.** A hipótese
+> central — o vazamento é condicional ao prompt — se confirma.
+> Relatório: [`evidence/ia-360-w4/medicao-vazamento/RELATORIO.md`](../../evidence/ia-360-w4/medicao-vazamento/RELATORIO.md).
 
 ---
 
@@ -30,6 +38,22 @@ que um modelo de linguagem faz.
 A terceira linha é a que decide o desenho: **limpei o texto e o vazamento voltou pelo NOME da
 ferramenta** — que é contrato de wire e não pode ser renomeado. Não há prompt que feche isso; só
 se fecha **não mostrando**.
+
+### A TERCEIRA porta — achada depois, e esta doutrina a subestimava
+
+A medição de 2026-08-05 encontrou uma origem que não está na tabela acima e que **não se fecha
+escondendo a ferramenta**:
+
+> "As execuções mais recentes deram erro na ação de webhook: `unsafe_url:https_required`"
+
+Isso não veio da `description` nem do `name`. Veio do **DADO que a ferramenta devolveu**. Um
+Conversador que não vê ferramenta nenhuma, mas recebe payload cru, continua vazando.
+
+Na mesma resposta chegaram **UUIDs crus de usuários** à tela do cliente — vazamento de *dado*, não
+de vocabulário, e que o detector não pega por desenho (`uuid` na lista é a palavra, não o valor).
+
+O texto abaixo dizia apenas *"com retorno já traduzido"*, en passant. **Não é detalhe: é a terceira
+porta, e ela exige uma camada própria de projeção** (spec 16 §4).
 
 ---
 
@@ -131,8 +155,8 @@ turnos em que o Operador quis agir e não pôde. Se ele parar de agir, alguém v
 
 ## Ordem de construção — cada passo vale sozinho
 
-**1. Gate de vazamento no before-send.** Barato, isolado, sem refatoração. Entrega o número real do
-problema hoje. *Sinal de sucesso: saber quantos % dos turnos vazam.*
+**1. Gate de vazamento no before-send.** ✅ **FEITO** (`internal_vocabulary`, cadeia v6). Entregou o
+número: **30% com prompt de operador, 0% com prompt de atendimento**. *Sinal de sucesso cumprido.*
 
 **2. Contrato de estado explícito.** Promover o checkpoint a fronteira declarada entre os dois
 papéis, com Zod e teste. Ainda um turno só. *Sinal: o contrato existe e é validado.*

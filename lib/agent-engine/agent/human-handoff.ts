@@ -27,6 +27,7 @@ import { emitAgentActivityForContact } from '@/lib/leads/agent-activity';
 import type { Logger } from '../obs/logger';
 import { cancelPendingCronsForLead } from '../cron/scheduler';
 import { findForbiddenKey, zodIssuesSummary } from './lead-state';
+import { renderDeclaracaoParaHumano, type DeclaracaoDoTurno } from './declaracao';
 
 /** Postgres `infinity`: o bot nunca reassume após handoff. */
 const SILENCE_INFINITY = 'infinity';
@@ -300,6 +301,12 @@ export function buildHandoffSummary(
     objections: string[];
     next_action: string | null;
     rolling_summary: string;
+    /**
+     * A declaração do último turno (spec 16 §5). Opcional na assinatura porque
+     * chamador antigo (e checkpoint gravado antes da coluna existir) não a tem —
+     * ausência degrada para o resumo de hoje, nunca quebra o handoff.
+     */
+    declaracao?: DeclaracaoDoTurno | null;
   } | null,
 ): string {
   if (previous === null) {
@@ -307,6 +314,12 @@ export function buildHandoffSummary(
   }
   const parts: string[] = [];
   if (previous.rolling_summary.trim() !== '') parts.push(previous.rolling_summary.trim());
+  // A declaração vem ANTES dos campos antigos de propósito: quem assume uma
+  // conversa no meio precisa primeiro do que a pessoa quer e do que foi
+  // prometido a ela — é o que decide a próxima frase que ele vai digitar.
+  // Compromissos e objeções acumulados são contexto, não ação imediata.
+  const declarado = renderDeclaracaoParaHumano(previous.declaracao ?? null);
+  if (declarado !== '') parts.push(declarado);
   if (previous.commitments.length > 0) parts.push(`Compromissos: ${previous.commitments.join('; ')}`);
   if (previous.objections.length > 0) parts.push(`Objeções: ${previous.objections.join('; ')}`);
   if (previous.next_action) parts.push(`Próxima ação: ${previous.next_action}`);

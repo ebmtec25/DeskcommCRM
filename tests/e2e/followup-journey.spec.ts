@@ -40,6 +40,7 @@ import * as path from "node:path";
 import { test, expect, type Page } from "@playwright/test";
 
 import { generateTotp, msUntilNextTotpWindow } from "./utils/totp";
+import { carregarEnvLocal } from "../../scripts/lib/env-de-teste";
 
 const CREDS_PATH = path.join(process.cwd(), ".e2e-creds.json");
 const ARTIFACTS_DIR = path.join(process.cwd(), "e2e-artifacts");
@@ -66,8 +67,8 @@ function loadCreds(): Creds {
 }
 
 function loadInternalSecret(): string {
-  const envFile = fs.readFileSync(path.join(process.cwd(), ".env.local"), "utf8");
-  const match = envFile.match(/^INTERNAL_SECRET=(.*)$/m);
+  const envDeTeste = carregarEnvLocal();
+  const match = [null, envDeTeste.INTERNAL_SECRET];
   const secret = match?.[1]?.trim();
   if (!secret) throw new Error("INTERNAL_SECRET não encontrado em .env.local");
   return secret;

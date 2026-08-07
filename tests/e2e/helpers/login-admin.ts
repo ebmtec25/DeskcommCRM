@@ -30,6 +30,13 @@ export interface CredsE2E {
   password: string;
   users: Record<string, { email: string }>;
   admin_totp?: { secret: string; factor_id?: string };
+  /**
+   * O agente que o seed de credenciais cria. **É um `rag_bot`** — a tela de
+   * configuração por papéis é do `mcp_agent`, então não serve para ela.
+   */
+  default_agent_id?: string;
+  /** `mcp_agent` + versão criados por `scripts/seed-e2e-capacidades.ts`. */
+  capacidades?: { agent_id: string; version_id: string };
 }
 
 export function lerCreds(): CredsE2E {

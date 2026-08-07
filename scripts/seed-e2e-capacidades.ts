@@ -23,20 +23,15 @@
 import { createClient } from "@supabase/supabase-js";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { anunciarDestino, credenciaisSupabaseDeTeste } from "./lib/env-de-teste";
 
-const envFile = fs.readFileSync(path.join(process.cwd(), ".env.local"), "utf8");
-for (const line of envFile.split("\n")) {
-  const m = line.match(/^([A-Z0-9_]+)=(.*)$/);
-  if (m && !process.env[m[1]!]) {
-    process.env[m[1]!] = m[2]!.replace(/^"(.*)"$/, "$1");
-  }
-}
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-if (!SUPABASE_URL || !SERVICE_ROLE) {
-  throw new Error("Faltam NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY no .env.local");
-}
+// Este script JÁ respeitava `process.env` (o `.env.local` era só fallback), mas
+// estourava se o arquivo não existisse — que é exatamente o caso do worktree
+// dedicado de e2e, onde a ausência dele é a proteção. O helper trata os dois.
+const credenciais = credenciaisSupabaseDeTeste();
+anunciarDestino("seed-e2e-capacidades", credenciais);
+const SUPABASE_URL = credenciais.url;
+const SERVICE_ROLE = credenciais.serviceRole;
 
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE, {
   auth: { autoRefreshToken: false, persistSession: false },

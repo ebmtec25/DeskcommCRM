@@ -5,7 +5,7 @@
   "esperado": "crm_list_automation_rules + crm_list_automation_runs",
   "rodou": true,
   "status": "completed",
-  "final_text": "Há **1 automação ligada**:\n\n- **SSRF Outbound 1785496528461**\n  - Disparo: criação de lead (`lead.created`)\n  - Ação: chamada de webhook\n  - Última execução: **05/08/2026 às 14:11:39 UTC**\n  - Total de execuções: **22**\n\n**Sim, ela está falhando.** As execuções mais recentes — incluindo a última — deram erro na ação de webhook:\n\n`unsafe_url:https_required`\n\nIsso indica que a URL configurada para o webhook não está usando **HTTPS** (ou não é aceita como URL HTTPS segura). No histórico retornado, há falhas repetidas desde 04/08, com várias ocorrências nas últimas horas.",
+  "final_text": "Sim. Há **1 automação ativa**:\n\n- **SSRF Outbound 1785496528461**\n  - Gatilho: criação de lead (`lead.created`)\n  - Ação: chamada de webhook\n  - Execuções registradas: **30**\n  - Última execução: **06/08/2026 às 15:27:34 (UTC)**\n\nEla apresentou falhas recentes — inclusive às **15:27**, **15:22** e **13:10** de hoje. O erro em todas foi:\n\n- `unsafe_url:https_required`\n\nOu seja, o webhook está configurado com uma URL que não atende à exigência de **HTTPS**. É necessário revisar o endereço de destino e usar uma URL `https://` válida.",
   "ferramentas": [
     "crm_list_automation_rules",
     "crm_list_automation_runs",
@@ -16,7 +16,7 @@
       "step": 0,
       "finish_reason": "tool-calls",
       "tokens_in": 2171,
-      "tokens_out": 97,
+      "tokens_out": 98,
       "tool_calls": [
         {
           "tool_name": "crm_list_automation_rules",
@@ -34,8 +34,8 @@
                   "call_webhook"
                 ],
                 "quantidade_de_condicoes": 0,
-                "last_run_at": "2026-08-05T14:11:39.48+00:00",
-                "run_count": 22,
+                "last_run_at": "2026-08-06T15:27:34.791+00:00",
+                "run_count": 30,
                 "last_change_actor_kind": null,
                 "last_change_at": null
               }
@@ -58,8 +58,8 @@
     {
       "step": 1,
       "finish_reason": "tool-calls",
-      "tokens_in": 2419,
-      "tokens_out": 69,
+      "tokens_in": 2420,
+      "tokens_out": 71,
       "tool_calls": [
         {
           "tool_name": "crm_list_automation_runs",
@@ -70,6 +70,102 @@
           },
           "result": {
             "execucoes": [
+              {
+                "id": "106f27f0-83f0-4a36-83be-7951f1891706",
+                "regra": "SSRF Outbound 1785496528461",
+                "status": "failed",
+                "quando": "2026-08-06T15:27:34.739378+00:00",
+                "falhas": [
+                  {
+                    "acao": "call_webhook",
+                    "erro": "unsafe_url:https_required"
+                  }
+                ]
+              },
+              {
+                "id": "488bf08b-6c2b-4fd0-8c83-578ab70c000d",
+                "regra": "SSRF Outbound 1785496528461",
+                "status": "failed",
+                "quando": "2026-08-06T15:27:34.349372+00:00",
+                "falhas": [
+                  {
+                    "acao": "call_webhook",
+                    "erro": "unsafe_url:https_required"
+                  }
+                ]
+              },
+              {
+                "id": "a090152c-8a1f-4d78-b93a-e6fe24b1996a",
+                "regra": "SSRF Outbound 1785496528461",
+                "status": "failed",
+                "quando": "2026-08-06T15:22:41.543907+00:00",
+                "falhas": [
+                  {
+                    "acao": "call_webhook",
+                    "erro": "unsafe_url:https_required"
+                  }
+                ]
+              },
+              {
+                "id": "75687e02-e11d-4d12-9ef4-1ef1a30ce4e7",
+                "regra": "SSRF Outbound 1785496528461",
+                "status": "failed",
+                "quando": "2026-08-06T15:22:40.990061+00:00",
+                "falhas": [
+                  {
+                    "acao": "call_webhook",
+                    "erro": "unsafe_url:https_required"
+                  }
+                ]
+              },
+              {
+                "id": "33b3ccb8-4a1e-4276-a9ef-9ff72b10fc52",
+                "regra": "SSRF Outbound 1785496528461",
+                "status": "failed",
+                "quando": "2026-08-06T13:10:56.445261+00:00",
+                "falhas": [
+                  {
+                    "acao": "call_webhook",
+                    "erro": "unsafe_url:https_required"
+                  }
+                ]
+              },
+              {
+                "id": "dcc5c3e3-50e4-4a84-aefe-f91ad253a59b",
+                "regra": "SSRF Outbound 1785496528461",
+                "status": "failed",
+                "quando": "2026-08-06T13:10:56.276221+00:00",
+                "falhas": [
+                  {
+                    "acao": "call_webhook",
+                    "erro": "unsafe_url:https_required"
+                  }
+                ]
+              },
+              {
+                "id": "7a9b4011-375d-477e-83b7-fdfe073e65b0",
+                "regra": "SSRF Outbound 1785496528461",
+                "status": "failed",
+                "quando": "2026-08-05T21:45:39.172235+00:00",
+                "falhas": [
+                  {
+                    "acao": "call_webhook",
+                    "erro": "unsafe_url:https_required"
+                  }
+                ]
+              },
+              {
+                "id": "10ae90f8-85fc-447a-a117-6388fc010c14",
+                "regra": "SSRF Outbound 1785496528461",
+                "status": "failed",
+                "quando": "2026-08-05T21:28:38.633295+00:00",
+                "falhas": [
+                  {
+                    "acao": "call_webhook",
+                    "erro": "unsafe_url:https_required"
+                  }
+                ]
+              },
               {
                 "id": "580460c9-98a7-40c5-8a67-c3eb41f69237",
                 "regra": "SSRF Outbound 1785496528461",
@@ -341,16 +437,16 @@
     },
     {
       "step": 2,
-      "text": "Há **1 automação ligada**:\n\n- **SSRF Outbound 1785496528461**\n  - Disparo: criação de lead (`lead.created`)\n  - Ação: chamada de webhook\n  - Última execução: **05/08/2026 às 14:11:39 UTC**\n  - Total de execuções: **22**\n\n**Sim, ela está falhando.** As execuções mais recentes — incluindo a última — deram erro na ação de webhook:\n\n`unsafe_url:https_required`\n\nIsso indica que a URL configurada para o webhook não está usando **HTTPS** (ou não é aceita como URL HTTPS segura). No histórico retornado, há falhas repetidas desde 04/08, com várias ocorrências nas últimas horas.",
+      "text": "Sim. Há **1 automação ativa**:\n\n- **SSRF Outbound 1785496528461**\n  - Gatilho: criação de lead (`lead.created`)\n  - Ação: chamada de webhook\n  - Execuções registradas: **30**\n  - Última execução: **06/08/2026 às 15:27:34 (UTC)**\n\nEla apresentou falhas recentes — inclusive às **15:27**, **15:22** e **13:10** de hoje. O erro em todas foi:\n\n- `unsafe_url:https_required`\n\nOu seja, o webhook está configurado com uma URL que não atende à exigência de **HTTPS**. É necessário revisar o endereço de destino e usar uma URL `https://` válida.",
       "finish_reason": "stop",
-      "tokens_in": 4356,
-      "tokens_out": 160,
+      "tokens_in": 5042,
+      "tokens_out": 162,
       "tool_calls": []
     }
   ],
-  "latency_ms": 7263,
+  "latency_ms": 6750,
   "cost_cents": 3,
   "model": "gpt-5.6-terra",
-  "agent_version_id": "bbcc4dcf-933c-4047-a685-b170a0796003",
-  "medido_em": "2026-08-05T20:03:16.304Z"
+  "agent_version_id": "db986d8b-d6ac-411e-87f9-37427871b2e6",
+  "medido_em": "2026-08-06T16:18:04.211Z"
 }

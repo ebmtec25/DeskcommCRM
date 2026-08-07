@@ -20,13 +20,22 @@ import * as path from "node:path";
 import pg from "pg";
 
 import { avisarCapacidadesAusentes } from "../lib/agent-engine/agent/inbound-turn";
+import { anunciarDestino, credenciaisSupabaseDeTeste } from "./lib/env-de-teste";
 
-const envFile = fs.readFileSync(path.join(process.cwd(), ".env.local"), "utf8");
-const env: Record<string, string> = {};
-for (const line of envFile.split("\n")) {
-  const m = line.match(/^([A-Z0-9_]+)=(.*)$/);
-  if (m) env[m[1]!] = m[2]!.replace(/^"(.*)"$/, "$1");
-}
+// `process.env` VENCE o `.env.local` (ver scripts/lib/env-de-teste.ts).
+//
+// A versão anterior lia `.env.local` DIRETO do disco, ignorando o ambiente — e
+// por isso a suíte E2E semeava no banco de PRODUÇÃO mesmo com o `.env.e2e`
+// injetado no webServer do Playwright: este script nunca olhava para lá.
+const credenciais = credenciaisSupabaseDeTeste();
+anunciarDestino("seed-e2e-capacidades-ausentes", credenciais);
+const env = {
+  NEXT_PUBLIC_SUPABASE_URL: credenciais.url,
+  SUPABASE_SERVICE_ROLE_KEY: credenciais.serviceRole,
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: credenciais.anonKey,
+  NEXT_PUBLIC_APP_URL: credenciais.appUrl,
+  SUPABASE_DB_URL: credenciais.dbUrl,
+} as Record<string, string>;
 
 const pool = new pg.Pool({ connectionString: env.SUPABASE_DB_URL! });
 

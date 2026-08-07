@@ -26,6 +26,7 @@ import * as path from "node:path";
 import { test, expect, type Page, type APIRequestContext } from "@playwright/test";
 
 import { generateTotp, msUntilNextTotpWindow } from "./utils/totp";
+import { catalogoEntregueAoOperador } from "@/lib/agent-engine/agent/entrega-de-capacidade";
 
 const APP_URL = `http://localhost:${process.env.E2E_PORT ?? "3001"}`;
 const CREDS_PATH = path.join(process.cwd(), ".e2e-creds.json");
@@ -89,6 +90,35 @@ const PROMPT_ATENDIMENTO = [
   "Responda dúvidas sobre atendimento, horários e agendamento.",
   "Nunca invente informação: se não souber, diga que vai verificar com a equipe.",
 ].join(" ");
+
+/**
+ * Tira do agente as ferramentas de OPERAÇÃO — as que servem para o dono cuidar
+ * da casa, não para responder pergunta de paciente. É a configuração que a spec
+ * 16 (passo 6) chama de "cura": a taxa cai por AUSÊNCIA, não por filtro?
+ *
+ * `crm_list_pipelines`/`stages`/`tags` FICAM: o Conversador precisa saber em que
+ * etapa o lead está para conversar direito.
+ */
+const SEM_OPERACAO = process.env.QA_SEM_OPERACAO === "1";
+
+/**
+ * Quais capacidades sobram no Conversador — perguntado AO CÓDIGO, não copiado.
+ *
+ * Isto fecha o laço entre a medição e a implementação: o contexto que este spec
+ * manda ao modelo é o mesmo que `catalogoEntregueAoOperador` produz em produção.
+ * Uma lista copiada aqui mediria a minha cópia, e ela poderia divergir do que o
+ * turno real monta sem nada vermelhar.
+ */
+const CAPACIDADES_DO_TESTE = SEM_OPERACAO
+  ? CAPACIDADES.filter(
+      (t) =>
+        !catalogoEntregueAoOperador({
+          operadorLigado: true,
+          ferramentasDoOperador: CAPACIDADES,
+          ferramentasDoConversador: CAPACIDADES,
+        }).includes(t),
+    )
+  : CAPACIDADES;
 
 const PROMPT_KIND = process.env.QA_PROMPT === "atendimento" ? "atendimento" : "operador";
 const PROMPT = PROMPT_KIND === "atendimento" ? PROMPT_ATENDIMENTO : PROMPT_OPERADOR;
@@ -319,6 +349,19 @@ async function versaoComAsCapacidades(req: APIRequestContext, agenteId: string):
     if (!nova.ok()) throw new Error(`criar credencial → ${nova.status()}: ${corpo.slice(0, 300)}`);
     credentialId = (JSON.parse(corpo) as { data: { id: string } }).data.id;
     console.info(`[QA] credencial ${provider} cadastrada pela rota (chave veio do ambiente)`);
+    // VALIDA pela rota, como o dono faria na tela. Sem isto o runtime recusa a
+    // credencial com `credential_not_validated` e TODO run morre — o que aparece
+    // no relatório como "o modelo não respondeu", escondendo a causa real.
+    //
+    // Medido em 2026-08-06: num banco limpo (sem uma credencial validada de
+    // rodada anterior), a coleta inteira devolvia turnos vazios por causa disto.
+    // O caminho antigo só funcionava porque reaproveitava credencial já validada
+    // à mão — dependência invisível de estado que ninguém tinha declarado.
+    const val = await req.post(`${APP_URL}/api/v1/ai/credentials/${credentialId}/revalidate`);
+    if (!val.ok()) {
+      throw new Error(`validar credencial → ${val.status()}: ${(await val.text()).slice(0, 200)}`);
+    }
+    console.info(`[QA] credencial validada`);
   } else {
     const credRes = await req.get(`${APP_URL}/api/v1/ai/credentials`);
     const cred = (await credRes.json()) as { data?: Array<{ id: string; provider: string }> };
@@ -344,7 +387,7 @@ async function criarVersao(
       model: modelo,
       credential_id: credentialId,
       channel_session_id: canalId,
-      tool_ids: CAPACIDADES,
+      tool_ids: CAPACIDADES_DO_TESTE,
       max_steps: 8,
     },
   });
@@ -387,7 +430,12 @@ test.describe("QA — o agente usa as mãos que a W4 entregou?", () => {
         { data: { sample_message: cenario.mensagem }, timeout: 180_000 },
       );
       const bruto = await res.text();
-      const dump = path.join(TURNOS, `${PROMPT_KIND}__${cenario.nome}.json`);
+      // O sufixo separa as duas corridas: sem ele, a configuração "sem operação"
+      // sobrescreveria os turnos do CONTROLE e a comparação se perderia.
+      const dump = path.join(
+        TURNOS,
+        `${PROMPT_KIND}${SEM_OPERACAO ? "__sem-operacao" : ""}__${cenario.nome}.json`,
+      );
       if (!res.ok()) {
         console.info(`[QA] ${cenario.nome}: HTTP ${res.status()} — ${bruto.slice(0, 300)}`);
         relatorio.push(`## ${cenario.nome}\nFALHOU: HTTP ${res.status()}\n${bruto.slice(0, 600)}`);
