@@ -49,6 +49,7 @@ import {
 } from '../edge/llm/run-model-call';
 import type { ProviderRegistry } from '../edge/llm/providers';
 import { MIRROR_WARN_ONLY, mirrorLeadStageToCrm } from '../edge/crm/move-lead-stage';
+import { garanteLeadParaContato } from '@/lib/leads/ensure-lead-for-contact';
 import { insertInboxItem } from '../db/repository';
 import { buildNativeMediaParts } from './media-parts';
 import type { JobRow, Queryable } from '../queue/queue';
@@ -732,6 +733,50 @@ export async function runAgentTurn(
       intent: routed.intentName,
     });
   }
+
+  // CRM Vivo — fecha o gap documentado em HANDOFF-crm-vivo.md ("dois funis
+  // paralelos", "Negócios no CRM: 0"): só em turno de mensagem NOVA do lead
+  // (nunca follow-up/case-reply, que já pressupõem negócio existente), garante
+  // que (a) o contato tem um card no Kanban e (b) a conversa reflete que a IA
+  // está atendendo — hoje ela nasce e fica em 'open' para sempre no caminho
+  // primário, e só sai de lá pelo caminho de handoff-de-volta (retomada.ts).
+  // As duas escritas são best-effort: falhar aqui não pode derrubar a resposta
+  // ao lead, que é o que importa de verdade neste turno.
+  if (job.kind === 'inbound_turn') {
+    try {
+      await pool.query(
+        `update conversations
+            set assignee_kind = 'ai', status = 'ai_handling', status_changed_at = now()
+          where organization_id = $1 and id = $2
+            and assigned_to_user_id is null
+            and status in ('open', 'pending')`,
+        [tenantId, input.conversationId],
+      );
+    } catch (err) {
+      runLog.warn('marcar conversa como ai_handling falhou — turno segue', {
+        error: (err instanceof Error ? err.message : String(err)).slice(0, 120),
+      });
+    }
+
+    try {
+      const garantia = await garanteLeadParaContato(deps.crmCfg.supabase, {
+        organizationId: tenantId,
+        contactId: leadId,
+        agentId: agentConfig?.agentId ?? null,
+      });
+      if (!garantia.ok) {
+        runLog.warn('crm_lead não garantido para o contato', {
+          motivo: garantia.motivo,
+          detalhe: garantia.detalhe,
+        });
+      }
+    } catch (err) {
+      runLog.warn('garanteLeadParaContato lançou — turno segue', {
+        error: (err instanceof Error ? err.message : String(err)).slice(0, 120),
+      });
+    }
+  }
+
   // Fase 3: grava a decisão de roteamento e a aderência da conversa ao agente.
   // Fire-and-forget — falha de telemetria nunca derruba a resposta ao lead.
   if (routed.routerId !== null) {
