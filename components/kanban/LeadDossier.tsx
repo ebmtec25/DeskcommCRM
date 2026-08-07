@@ -71,8 +71,11 @@ export function LeadDossier({
         // negócio sem novidade é um estado normal.
         data-refetch-divergencias={timeline.seguranca.divergencias}
       >
-        <SheetHeader className="pb-3">
+        <SheetHeader className="gap-0.5 pb-1">
           <SheetTitle className="text-base leading-6">{lead.title}</SheetTitle>
+          {lead.contact?.phone_number && (
+            <p className="text-xs text-text-muted">{lead.contact.phone_number}</p>
+          )}
         </SheetHeader>
 
         {/* ① cabeçalho vivo */}
@@ -86,6 +89,9 @@ export function LeadDossier({
             ownerName={owner.name}
             agentVersion={owner.agentVersion}
           />
+          <span className="text-text-muted">
+            Lead desde {new Date(lead.created_at).toLocaleDateString("pt-BR")}
+          </span>
           {score && (
             // O MESMO componente do card, não uma cópia do medidor.
             // "Superfície nova herda as decisões da antiga" só vale como
@@ -119,6 +125,28 @@ export function LeadDossier({
             Probabilidade recalculada automaticamente · {new Date(score.at).toLocaleString("pt-BR")}
           </p>
         )}
+
+        {/* Tese — o mesmo campo `description` que o formulário edita lá embaixo,
+            só que em destaque: é a pergunta que se responde ao abrir o
+            negócio ("por que isso vai fechar"), não um dado pra rolar até
+            achar. Vazio convida a preencher em vez de sumir — sumir daria a
+            impressão de que a tese nunca existiu como conceito aqui. */}
+        <section className="border-b border-border py-3">
+          <h3 className="mb-1 text-xs font-medium uppercase tracking-wide text-text-muted">
+            Tese
+          </h3>
+          {lead.description ? (
+            <p className="whitespace-pre-wrap text-sm text-text">{lead.description}</p>
+          ) : (
+            <button
+              type="button"
+              onClick={() => campos.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
+              className="text-sm text-text-muted underline-offset-2 hover:text-text hover:underline"
+            >
+              Sem tese registrada — clique para adicionar
+            </button>
+          )}
+        </section>
 
         {/* ② timeline */}
         <section className="flex-1 py-3">

@@ -123,8 +123,13 @@ export function LeadFieldsForm({ lead, pipelineId, onSaved, onCancel }: Props) {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="description">Descrição</Label>
-          <Textarea id="description" rows={3} {...form.register("description")} />
+          <Label htmlFor="description">Tese</Label>
+          <Textarea
+            id="description"
+            rows={3}
+            placeholder="Por que esse negócio vai fechar — contexto, dor, próxima alavanca…"
+            {...form.register("description")}
+          />
         </div>
 
         <div className="grid grid-cols-2 gap-3">
