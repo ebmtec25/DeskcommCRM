@@ -58,6 +58,12 @@ export interface Lead {
    */
   next_action?: { label: string; seq: number; proposed_at: string } | null;
   /**
+   * Derivado (não é coluna): nome e telefone do contato dono do negócio,
+   * anexado pela rota do board. Telefone nunca teve coluna própria em
+   * `crm_leads` — é do contato (`contacts.phone_number`).
+   */
+  contact?: { name: string | null; phone_number: string | null } | null;
+  /**
    * Derivado (não é coluna): o score vem de `crm_lead_scores` por LEFT JOIN.
    *
    * Ausente é estado LEGÍTIMO (sinal insuficiente, cenário 17) — por isso LEFT

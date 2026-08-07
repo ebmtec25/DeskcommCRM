@@ -13,12 +13,6 @@ interface StageColumnProps {
   pipelineId: string;
   /** owner_user_id → nome, resolvido no board. O dono agente vem no lead. */
   ownerNames?: Map<string, string | null>;
-  /** ids que o radar classificou como esfriando (fonte única, não recalculada). */
-  coolingIds?: Set<string>;
-  /** Propostas de retomada vivas, por lead. */
-  reactivations?: Map<string, { proposalId: string; expiresAt: string }>;
-  /** `settings.canonical_tags` do pipeline — a única tag que fica no card. */
-  canonicalTags?: string[];
   selectedLeadIds?: Set<string>;
   /** leadId → quantos eventos remotos já chegaram (muda = pulsa de novo). */
   pulses?: Map<string, number>;
@@ -44,9 +38,6 @@ export function StageColumn({
   leads,
   pipelineId,
   ownerNames,
-  coolingIds,
-  reactivations,
-  canonicalTags,
   selectedLeadIds,
   pulses,
   onSelect,
@@ -95,13 +86,7 @@ export function StageColumn({
             {leads.map((lead, idx) => (
               <KanbanCard
                 key={lead.id}
-                card={buildCardInput(lead, {
-                  stageName: stage.name,
-                  ownerNames,
-                  coolingIds,
-                  reactivations,
-                  canonicalTags,
-                })}
+                card={buildCardInput(lead, { ownerNames })}
                 lead={lead}
                 index={idx}
                 pipelineId={pipelineId}

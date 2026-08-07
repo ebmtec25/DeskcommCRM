@@ -110,6 +110,57 @@ async function withOwnerAgents(
 }
 
 /**
+ * Anexa nome e telefone do contato aos leads — o card do Kanban não expõe mais
+ * do que identidade (nome + telefone) e dono; telefone nunca foi coluna de
+ * `crm_leads`, mora em `contacts.phone_number`.
+ *
+ * `organization_id` filtrado explicitamente, mesma razão de `withOwnerAgents`:
+ * service role bypassa RLS e o filtro vem do pipeline já validado pela RLS do
+ * caller, nunca do body.
+ */
+async function withContacts(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  organizationId: string,
+  leads: Lead[],
+): Promise<{ leads: Lead[]; error: string | null }> {
+  const contactIds = [
+    ...new Set(leads.map((l) => l.contact_id).filter((id): id is string => !!id)),
+  ];
+  if (contactIds.length === 0) return { leads, error: null };
+
+  const { data: contacts, error } = await supabase
+    .from("contacts")
+    .select("id, name, display_name, phone_number")
+    .eq("organization_id", organizationId)
+    .in("id", contactIds);
+  if (error) return { leads, error: error.message };
+
+  const byId = new Map(
+    (
+      (contacts ?? []) as Array<{
+        id: string;
+        name: string | null;
+        display_name: string | null;
+        phone_number: string | null;
+      }>
+    ).map((c) => [c.id, c]),
+  );
+
+  return {
+    leads: leads.map((lead) => {
+      if (!lead.contact_id) return lead;
+      const c = byId.get(lead.contact_id);
+      if (!c) return lead;
+      return {
+        ...lead,
+        contact: { name: c.display_name ?? c.name, phone_number: c.phone_number },
+      };
+    }),
+    error: null,
+  };
+}
+
+/**
  * Anexa a próxima ação proposta pelo agente aos leads que a receberam.
  *
  * Os candidatos são buscados por CONTATO na org inteira, e não só neste
@@ -360,10 +411,19 @@ export async function GET(_req: NextRequest, ctx: RouteCtx): Promise<Response> {
     return fail("internal_error", leadsComScore.error, 500, { requestId });
   }
 
+  const leadsComContato = await withContacts(
+    supabase,
+    (pipeline as Pipeline).organization_id,
+    leadsComScore.leads,
+  );
+  if (leadsComContato.error) {
+    return fail("internal_error", leadsComContato.error, 500, { requestId });
+  }
+
   const board: BoardData = {
     pipeline: pipeline as Pipeline,
     stages: (stages ?? []) as Stage[],
-    leads: leadsComScore.leads,
+    leads: leadsComContato.leads,
   };
 
   return ok(board, { requestId });

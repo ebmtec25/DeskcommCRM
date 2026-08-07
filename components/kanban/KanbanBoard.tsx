@@ -6,8 +6,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useBoard } from "@/hooks/kanban/useBoard";
 import { useMoveCard } from "@/hooks/kanban/useMoveCard";
 import { useAssignableMembers } from "@/hooks/inbox/useAssignableMembers";
-import { useAtRiskLeads } from "@/hooks/leads/useAtRiskLeads";
-import { useReactivations } from "@/hooks/leads/useReactivations";
 import { midpoint } from "@/lib/kanban/fractional-indexing";
 import type { Lead } from "@/lib/types/leads";
 import type { Pipeline, Stage } from "@/lib/kanban/types";
@@ -82,34 +80,6 @@ export function KanbanBoard({
     () => new Map((members ?? []).map((m) => [m.user_id, m.full_name])),
     [members],
   );
-  // Esfriando vem do MESMO radar que alimenta /app/radar — o board não
-  // reclassifica nada (contrato §3.3). `em_voo` fica de fora: a IA já prometeu
-  // voltar, então não há decisão pendente para o humano.
-  const { data: atRisk } = useAtRiskLeads();
-  // As propostas vivas vêm da MESMA forma que o risco: uma lista por org, que o
-  // card consome sem saber de onde veio. Ver o cabeçalho da rota.
-  const { data: propostasVivas } = useReactivations();
-  const reactivations = useMemo(() => {
-    const m = new Map<string, { proposalId: string; expiresAt: string }>();
-    for (const p of propostasVivas ?? []) {
-      m.set(p.lead_id, { proposalId: p.proposal_id, expiresAt: p.expires_at });
-    }
-    return m;
-  }, [propostasVivas]);
-  const coolingIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const item of atRisk?.items ?? []) {
-      if (item.pipeline_id !== pipelineId) continue;
-      if (item.risk === "em_risco" || item.risk === "critico") ids.add(item.id);
-    }
-    return ids;
-  }, [atRisk, pipelineId]);
-  // A tag canônica do pipeline é a ÚNICA que fica no card (como ponto de 6px);
-  // as outras saem para o hover. Já existe em settings — não inventa campo.
-  const canonicalTags = useMemo(() => {
-    const raw = (pipelineProp ?? queryResult.data?.pipeline)?.settings?.canonical_tags;
-    return Array.isArray(raw) ? raw.filter((t): t is string => typeof t === "string") : [];
-  }, [pipelineProp, queryResult.data?.pipeline]);
 
   // O dossiê é do BOARD e não da página: ele precisa do lead inteiro e do nome
   // do estágio, que só existem aqui depois do agrupamento.
@@ -240,10 +210,7 @@ export function KanbanBoard({
             leads={grouped.get(stage.id) ?? []}
             pipelineId={pipelineId}
             ownerNames={ownerNames}
-            coolingIds={coolingIds}
-            reactivations={reactivations}
             pulses={pulsesProp ?? queryResult.pulses}
-            canonicalTags={canonicalTags}
             selectedLeadIds={selectedLeadIds}
             onSelect={handleSelect}
             onOpen={setDossieId}
