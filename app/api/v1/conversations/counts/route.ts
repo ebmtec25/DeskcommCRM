@@ -40,14 +40,16 @@ export async function GET(): Promise<Response> {
       .eq("organization_id", org);
 
   // Espelha tabToFilter (InboxLayout): unassigned = fila aberta sem dono;
-  // mine = atribuídas a mim; all = tudo que o usuário VÊ (RLS-scoped).
-  const [unassigned, mine, all] = await Promise.all([
+  // mine = atribuídas a mim; all = tudo que o usuário VÊ (RLS-scoped);
+  // ai = a IA está atendendo agora (status='ai_handling', mesmo filtro da aba).
+  const [unassigned, mine, all, ai] = await Promise.all([
     countExact().is("assigned_to_user_id", null).eq("status", "open"),
     countExact().eq("assigned_to_user_id", user.id),
     countExact(),
+    countExact().eq("status", "ai_handling"),
   ]);
 
-  const firstErr = unassigned.error ?? mine.error ?? all.error;
+  const firstErr = unassigned.error ?? mine.error ?? all.error ?? ai.error;
   if (firstErr) {
     return fail("internal_error", firstErr.message, 500, { requestId });
   }
@@ -57,6 +59,7 @@ export async function GET(): Promise<Response> {
       unassigned: unassigned.count ?? 0,
       mine: mine.count ?? 0,
       all: all.count ?? 0,
+      ai: ai.count ?? 0,
     },
     { requestId },
   );

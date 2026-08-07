@@ -65,6 +65,7 @@ export function InboxFilters({ value, onChange }: Props) {
     unassigned: counts?.unassigned,
     mine: counts?.mine,
     all: counts?.all,
+    ai: counts?.ai,
   };
   // Filtrar por um número que saiu da lista (o operador acabou de excluir o
   // canal) deixa o inbox mostrando um subconjunto — às vezes vazio — sem nada na
