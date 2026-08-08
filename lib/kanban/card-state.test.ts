@@ -60,6 +60,16 @@ describe("buildCardInput — o card só sabe identidade", () => {
   it("contato sem telefone cadastrado também é null", () => {
     const card = buildCardInput(lead({ contact: { name: "Carlos", phone_number: null } }), opts);
     expect(card.phone).toBeNull();
+    expect(card.phoneHidden).toBe(false);
+  });
+
+  it("contato só com lid marca phoneHidden — WhatsApp não repassou o número", () => {
+    const card = buildCardInput(
+      lead({ contact: { name: "Carlos", phone_number: null, phone_hidden: true } }),
+      opts,
+    );
+    expect(card.phone).toBeNull();
+    expect(card.phoneHidden).toBe(true);
   });
 
   it("título passa direto — é o nome do cliente, não recalculado aqui", () => {

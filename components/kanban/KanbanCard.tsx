@@ -120,8 +120,11 @@ export function KanbanCard({
             <KanbanCardActions lead={lead} pipelineId={pipelineId} />
           </div>
 
-          {/* ② telefone. */}
-          <p className="mt-1 truncate text-xs text-text-muted">{card.phone ?? "—"}</p>
+          {/* ② telefone. Sem telefone por lid (WhatsApp não repassou o número) é
+              estado diferente de sem telefone mesmo — "—" pareceria bug. */}
+          <p className="mt-1 truncate text-xs text-text-muted">
+            {card.phone ?? (card.phoneHidden ? "Número protegido pelo WhatsApp" : "—")}
+          </p>
 
           {/* ③ atendente — pequeno, no rodapé. */}
           <div className="mt-1.5">

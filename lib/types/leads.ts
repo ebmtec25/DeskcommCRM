@@ -61,8 +61,12 @@ export interface Lead {
    * Derivado (não é coluna): nome e telefone do contato dono do negócio,
    * anexado pela rota do board. Telefone nunca teve coluna própria em
    * `crm_leads` — é do contato (`contacts.phone_number`).
+   *
+   * `phone_hidden`: true quando o contato só tem identidade `lid` (o
+   * WhatsApp não repassou o número real pro WAHA — ver `wa_identity` em
+   * `contacts`) — distingue "protegido pelo WhatsApp" de "sem telefone".
    */
-  contact?: { name: string | null; phone_number: string | null } | null;
+  contact?: { name: string | null; phone_number: string | null; phone_hidden?: boolean } | null;
   /**
    * Derivado (não é coluna): o score vem de `crm_lead_scores` por LEFT JOIN.
    *

@@ -130,7 +130,7 @@ async function withContacts(
 
   const { data: contacts, error } = await supabase
     .from("contacts")
-    .select("id, name, display_name, phone_number, is_anonymized")
+    .select("id, name, display_name, phone_number, is_anonymized, wa_identity")
     .eq("organization_id", organizationId)
     .in("id", contactIds);
   if (error) return { leads, error: error.message };
@@ -143,6 +143,7 @@ async function withContacts(
         display_name: string | null;
         phone_number: string | null;
         is_anonymized: boolean;
+        wa_identity: string | null;
       }>
     ).map((c) => [c.id, c]),
   );
@@ -163,7 +164,13 @@ async function withContacts(
         if (!c) return lead;
         return {
           ...lead,
-          contact: { name: c.display_name ?? c.name, phone_number: c.phone_number },
+          contact: {
+            name: c.display_name ?? c.name,
+            phone_number: c.phone_number,
+            // wa_identity é gerada como 'lid:...' só quando não há phone_number
+            // e o WhatsApp mandou um lid — nunca as duas coisas juntas.
+            phone_hidden: c.phone_number === null && c.wa_identity?.startsWith("lid:") === true,
+          },
         };
       }),
     error: null,

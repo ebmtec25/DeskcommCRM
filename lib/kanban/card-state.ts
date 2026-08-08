@@ -19,6 +19,8 @@ export interface CardInput {
   id: string;
   title: string;
   phone: string | null;
+  /** Sem telefone porque o WhatsApp só entregou um lid (protegido), não porque falta dado. */
+  phoneHidden: boolean;
   owner: OwnerDisplay;
 }
 
@@ -40,6 +42,7 @@ export function buildCardInput(
     id: lead.id,
     title: lead.title,
     phone: lead.contact?.phone_number ?? null,
+    phoneHidden: lead.contact?.phone_hidden ?? false,
     owner: resolveLeadOwner(lead, opts.ownerNames),
   };
 }
