@@ -71,6 +71,7 @@ import {
   crmCloseDemand,
   crmProposeReactivation,
 } from "./retencao";
+import { crmScheduleAppointment, crmCancelAppointment, crmListAppointments } from "./agenda";
 
 // Cast via `unknown` porque McpToolDefinition<TInput> nao e covariante
 // em TInput (handler usa TInput em posicao contravariante). Coletar
@@ -108,6 +109,7 @@ export const allTools: ReadonlyArray<McpToolDefinition> = [
   crmListTeamMembers,
   crmListFollowups,
   crmListAtRiskLeads,
+  crmListAppointments,
   crmListAvailableAttendants,
   crmListHumanCases,
   crmGetHumanCase,
@@ -127,6 +129,8 @@ export const allTools: ReadonlyArray<McpToolDefinition> = [
   crmSetAutomationRuleActive,
   crmScheduleFollowup,
   crmCancelFollowup,
+  crmScheduleAppointment,
+  crmCancelAppointment,
   crmCloseDemand,
   crmProposeReactivation,
   crmAddCaseNote,

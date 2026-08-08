@@ -84,6 +84,48 @@ export const TOOLS_RETENCAO = declararTools([
     pacotes: ["reter"],
   },
   {
+    name: "crm_schedule_appointment",
+    category: "write",
+    description:
+      "Marca um compromisso (reunião, ligação ou visita) com o lead em crm_lead_appointments — " +
+      "distinto de crm_schedule_followup: isto é um HORÁRIO MARCADO com a pessoa, não um retorno " +
+      "interno do agente. scheduled_at é ISO 8601 ABSOLUTO e no futuro. Vários compromissos por " +
+      "lead são permitidos (é agenda, não um retorno único). Emite atividade na timeline.",
+    rotulo: "Marcar um compromisso com o cliente",
+    explicacao:
+      "Agenda uma reunião, ligação ou visita com o cliente numa data e hora específicas — aparece na tela de Agenda e no histórico do negócio.",
+    oQueToca: "Agenda",
+    risco: "atencao",
+    pacotes: ["reter", "vender"],
+  },
+  {
+    name: "crm_cancel_appointment",
+    category: "write",
+    description:
+      "Cancela um compromisso marcado (crm_lead_appointments) que ainda não passou. Idempotente: " +
+      "cancelar de novo não é erro. Emite atividade na timeline.",
+    rotulo: "Cancelar um compromisso marcado",
+    explicacao:
+      "Desmarca uma reunião, ligação ou visita já combinada com o cliente que não vai mais acontecer.",
+    oQueToca: "Agenda",
+    risco: "atencao",
+    pacotes: ["reter", "vender"],
+  },
+  {
+    name: "crm_list_appointments",
+    category: "read",
+    description:
+      "Lista os compromissos de um lead (crm_lead_appointments), do mais próximo ao mais antigo, " +
+      "com status scheduled/cancelled. Use antes de marcar um novo, para não sugerir dois horários " +
+      "com a mesma pessoa.",
+    rotulo: "Ver os compromissos marcados com o cliente",
+    explicacao:
+      "Mostra as reuniões, ligações e visitas já combinadas com o cliente — o que está marcado e o que foi desmarcado.",
+    oQueToca: "Agenda",
+    risco: "seguro",
+    pacotes: ["reter", "vender"],
+  },
+  {
     name: "crm_close_demand",
     category: "write",
     description:
