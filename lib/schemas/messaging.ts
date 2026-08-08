@@ -117,9 +117,17 @@ export type PatchConversationInput = z.infer<typeof patchConversationSchema>;
 
 export const listConversationsQuerySchema = z.object({
   status: conversationStatusSchema.optional(),
-  /** Exclui um status da listagem — usado pela aba "Todas", que mostra tudo
-   * MENOS arquivada (arquivar existe pra sair da visão do atendimento). */
-  exclude_status: conversationStatusSchema.optional(),
+  /**
+   * Exclui um ou mais status da listagem (separados por vírgula) — a aba
+   * "Todas" usa isto pra mostrar tudo MENOS fechada e arquivada: as duas
+   * saíram da rotina de atendimento, não fazia sentido continuar ocupando a
+   * visão principal.
+   */
+  exclude_status: z
+    .string()
+    .transform((s) => s.split(",").map((v) => v.trim()))
+    .pipe(z.array(conversationStatusSchema).min(1))
+    .optional(),
   assigned_to: z.union([z.string().uuid(), z.literal("me"), z.literal("unassigned")]).optional(),
   channel_session_id: z.string().uuid().optional(),
   tag: conversationTagSchema.optional(),

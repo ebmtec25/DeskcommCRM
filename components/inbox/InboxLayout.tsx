@@ -26,21 +26,19 @@ function tabToFilter(tab: InboxFiltersValue["tab"]): Partial<ConversationsFilter
       return { assigned_to: "unassigned", status: "open" };
     case "mine":
       return { assigned_to: "me" };
-    case "closed":
-      return { status: "closed" };
-    case "archived":
-      return { status: "archived" };
     case "ai":
       return { status: "ai_handling" };
     case "all":
     default:
-      // "Todas" é tudo MENOS arquivada — arquivar existe pra sair da visão
-      // do atendimento; se "Todas" mostrasse de novo, o botão não teria efeito.
-      return { exclude_status: "archived" };
+      // "Todas" é tudo MENOS fechada e arquivada — as duas saíram da rotina
+      // de atendimento; mostrá-las aqui de novo tiraria o efeito de fechar ou
+      // arquivar. Dívida nomeada: sem aba nem botão de reabrir, uma conversa
+      // fechada/arquivada por engano fica sem volta pela tela hoje.
+      return { exclude_status: "closed,archived" };
   }
 }
 
-const FILTER_TABS: InboxTab[] = ["unassigned", "mine", "all", "closed", "archived", "ai"];
+const FILTER_TABS: InboxTab[] = ["unassigned", "mine", "all", "ai"];
 
 /**
  * Lê ?filter= (G4-02, deep-link). ?filter=all é HONRADO mesmo para agent — a

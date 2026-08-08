@@ -33,8 +33,8 @@ export type ConversationWithContact = Conversation & {
 
 export interface ConversationsFilters {
   status?: "open" | "claimed" | "ai_handling" | "closed" | "archived";
-  /** Exclui um status — a aba "Todas" usa isto pra mostrar tudo MENOS arquivada. */
-  exclude_status?: "open" | "claimed" | "ai_handling" | "closed" | "archived";
+  /** Um ou mais status, separados por vírgula — "Todas" exclui fechada e arquivada. */
+  exclude_status?: string;
   assigned_to?: "me" | "unassigned" | string;
   search?: string;
   channel_session_id?: string;

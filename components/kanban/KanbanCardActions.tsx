@@ -11,7 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-import { DotsThree, PencilSimple, Users } from "@/lib/ui/icons";
+import { Archive, DotsThree, PencilSimple, Users } from "@/lib/ui/icons";
 import { useWinLead, useEditLead } from "@/hooks/kanban/useUpdateLead";
 import { useAssignableMembers } from "@/hooks/inbox/useAssignableMembers";
 import { useAssignableAgents } from "@/hooks/kanban/useAssignableAgents";
@@ -137,7 +137,7 @@ export function KanbanCardActions({ lead, pipelineId }: KanbanCardActionsProps) 
               setLoseOpen(true);
             }}
           >
-            Marcar como perdido
+            <Archive size={14} className="mr-2" /> Arquivar
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

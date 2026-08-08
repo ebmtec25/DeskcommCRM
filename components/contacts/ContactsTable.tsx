@@ -1,8 +1,8 @@
 "use client";
-import { useState } from "react";
 import Link from "next/link";
 import { formatRelative } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { toast } from "sonner";
 import {
   Table,
   TableBody,
@@ -22,7 +22,7 @@ import {
 import { DotsThree, Trash } from "@/lib/ui/icons";
 import { useAuth } from "@/hooks/auth/AuthProvider";
 import { ROLE_RANK } from "@/lib/auth/types";
-import { AnonymizeDialog } from "./AnonymizeDialog";
+import { useAnonymizeContact } from "@/hooks/contacts/useAnonymizeContact";
 import type { Contact } from "@/lib/types/contacts";
 
 interface Props {
@@ -33,14 +33,37 @@ function displayName(c: Contact): string {
   return c.display_name?.trim() || c.name?.trim() || "—";
 }
 
+/**
+ * Justificativa fixa: o campo é exigido pelo schema LGPD (`min(10)`), mas
+ * pedir pra digitar a cada exclusão é a fricção que o clique único existe
+ * pra tirar. A ação em si já é auditada (quem, quando, qual contato) — o
+ * texto livre não acrescentava rastreabilidade, só passos.
+ */
+const JUSTIFICATIVA_PADRAO = "Exclusão solicitada via lista de Contatos.";
+
 export function ContactsTable({ contacts }: Props) {
   const { user, activeOrg } = useAuth();
   const isAdmin =
     user.is_platform_admin || (activeOrg && ROLE_RANK[activeOrg.role] >= ROLE_RANK.admin);
-  const [excluirId, setExcluirId] = useState<string | null>(null);
+  const anon = useAnonymizeContact();
+
+  function excluir(id: string, nome: string) {
+    if (!confirm(`Excluir ${nome}? Some do Kanban, do Inbox e desta lista. Não tem volta.`)) {
+      return;
+    }
+    anon.mutate(
+      { contact_id: id, justification: JUSTIFICATIVA_PADRAO },
+      {
+        onSuccess: (res) => {
+          toast.success(
+            res.data.action === "already_anonymized" ? "Já estava excluído." : "Contato excluído.",
+          );
+        },
+      },
+    );
+  }
 
   return (
-    <>
       <Table>
         <TableHeader>
           <TableRow>
@@ -106,7 +129,8 @@ export function ContactsTable({ contacts }: Props) {
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem
                         className="text-error-fg focus:text-error-fg"
-                        onSelect={() => setExcluirId(c.id)}
+                        disabled={anon.isPending}
+                        onSelect={() => excluir(c.id, displayName(c))}
                       >
                         <Trash size={14} className="mr-2" /> Excluir
                       </DropdownMenuItem>
@@ -118,23 +142,5 @@ export function ContactsTable({ contacts }: Props) {
           ))}
         </TableBody>
       </Table>
-
-      {/*
-       * "Excluir" aqui é anonimizar + sumir da tela, não DROP de linha —
-       * decisão do dono do produto: mantém rastro auditável (a mesma exigência
-       * de 5 anos que o resto do audit log já cumpre), reaproveita o mecanismo
-       * de LGPD que já existe em vez de um caminho de delete paralelo, e
-       * "número que volta vira lead novo" já é o comportamento de quem tem
-       * telefone anulado (wa_identity deixa de casar no upsert). O diálogo é o
-       * MESMO da aba LGPD do contato — não uma cópia.
-       */}
-      {excluirId && (
-        <AnonymizeDialog
-          contactId={excluirId}
-          open={excluirId !== null}
-          onOpenChange={(v) => !v && setExcluirId(null)}
-        />
-      )}
-    </>
   );
 }

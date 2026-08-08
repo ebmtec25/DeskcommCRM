@@ -135,7 +135,7 @@ export const NAV_DESTINATIONS: NavDestination[] = [
   // ---- Atendimento — onde o operador passa o dia ----
   {
     href: "/app/inbox",
-    label: "Inbox",
+    label: "Conversas",
     description: "As conversas de WhatsApp, com você e a IA atendendo lado a lado.",
     icon: Inbox,
     group: "atendimento",

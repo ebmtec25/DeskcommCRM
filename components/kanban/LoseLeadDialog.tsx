@@ -52,9 +52,9 @@ export function LoseLeadDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Marcar como perdido</DialogTitle>
+          <DialogTitle>Arquivar</DialogTitle>
           <DialogDescription>
-            Informe o motivo. Essa informação ajuda a melhorar o funil.
+            Sai do Kanban e vai para Perdidos. Informe o motivo — ajuda a melhorar o funil.
           </DialogDescription>
         </DialogHeader>
 

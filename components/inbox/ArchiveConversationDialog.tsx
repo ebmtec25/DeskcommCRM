@@ -23,7 +23,7 @@ interface ArchiveConversationDialogProps {
 const MAX_LEN = 500;
 
 /**
- * Arquivar aqui é a MESMA decisão do "Marcar como perdido" do Kanban — o
+ * Arquivar aqui é a MESMA decisão do "Arquivar" do card no Kanban — o
  * atendimento é onde a pessoa percebe que o negócio não vai fechar, então o
  * motivo é pedido aqui em vez de mandar o atendente até o board pra dizer a
  * mesma coisa. A rota (`/archive`) resolve sozinha se há um negócio aberto

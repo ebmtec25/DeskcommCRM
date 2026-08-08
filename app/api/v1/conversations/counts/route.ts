@@ -45,9 +45,9 @@ export async function GET(): Promise<Response> {
   const [unassigned, mine, all, ai] = await Promise.all([
     countExact().is("assigned_to_user_id", null).eq("status", "open"),
     countExact().eq("assigned_to_user_id", user.id),
-    // "Todas" exclui arquivada (tabToFilter espelha isto) — contar arquivada
-    // aqui mostraria um número maior do que a lista realmente lista.
-    countExact().neq("status", "archived"),
+    // "Todas" exclui fechada e arquivada (tabToFilter espelha isto) — contar
+    // as duas aqui mostraria um número maior do que a lista realmente lista.
+    countExact().not("status", "in", "(closed,archived)"),
     countExact().eq("status", "ai_handling"),
   ]);
 
