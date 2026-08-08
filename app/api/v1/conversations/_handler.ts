@@ -99,6 +99,7 @@ export async function listConversationsHandler(
     .limit(q.limit + 1);
 
   if (q.status) query = query.eq("status", q.status);
+  if (q.exclude_status) query = query.neq("status", q.exclude_status);
   if (q.channel_session_id) query = query.eq("channel_session_id", q.channel_session_id);
   if (q.tag) query = query.contains("tags", [q.tag]); // tags @> array[tag] (GIN)
 
@@ -155,7 +156,15 @@ export async function listConversationsHandler(
       ? encodeCursor({ sort: (last[sortCol] as string | null) ?? null, id: last.id })
       : null;
 
-  return { conversations: page, cursor, has_more: hasMore };
+  // Contato anonimizado (LGPD) some do inbox — mesma regra do Kanban
+  // (board/route.ts): "excluir" em Contatos não pode deixar a conversa
+  // sobrando com o nome trocado por "Contato Anonimizado #N" pra sempre.
+  const visiveis = page.filter(
+    (c) => (c as unknown as { contacts?: { is_anonymized?: boolean } | null }).contacts
+      ?.is_anonymized !== true,
+  );
+
+  return { conversations: visiveis, cursor, has_more: hasMore };
 }
 
 // ---------------------------------------------------------------------------

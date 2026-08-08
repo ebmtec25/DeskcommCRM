@@ -28,15 +28,19 @@ function tabToFilter(tab: InboxFiltersValue["tab"]): Partial<ConversationsFilter
       return { assigned_to: "me" };
     case "closed":
       return { status: "closed" };
+    case "archived":
+      return { status: "archived" };
     case "ai":
       return { status: "ai_handling" };
     case "all":
     default:
-      return {};
+      // "Todas" é tudo MENOS arquivada — arquivar existe pra sair da visão
+      // do atendimento; se "Todas" mostrasse de novo, o botão não teria efeito.
+      return { exclude_status: "archived" };
   }
 }
 
-const FILTER_TABS: InboxTab[] = ["unassigned", "mine", "all", "closed", "ai"];
+const FILTER_TABS: InboxTab[] = ["unassigned", "mine", "all", "closed", "archived", "ai"];
 
 /**
  * Lê ?filter= (G4-02, deep-link). ?filter=all é HONRADO mesmo para agent — a

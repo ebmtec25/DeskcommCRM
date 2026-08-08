@@ -18,13 +18,14 @@ import { useConversationTagVocabulary } from "@/hooks/inbox/useConversationTags"
 import { useConversationCounts } from "@/hooks/inbox/useConversationCounts";
 import type { Role, VisibilityMode } from "@/lib/auth/types";
 
-export type InboxTab = "unassigned" | "mine" | "all" | "closed" | "ai";
+export type InboxTab = "unassigned" | "mine" | "all" | "closed" | "archived" | "ai";
 
 const INBOX_TABS: { value: InboxTab; label: string }[] = [
   { value: "unassigned", label: "Fila" },
   { value: "mine", label: "Minhas" },
   { value: "all", label: "Todas" },
   { value: "closed", label: "Fechadas" },
+  { value: "archived", label: "Arquivadas" },
   { value: "ai", label: "IA" },
 ];
 

@@ -10,6 +10,7 @@ import { useReleaseConversation } from "@/hooks/inbox/useReleaseConversation";
 import { useCloseConversation } from "@/hooks/inbox/useCloseConversation";
 import { useResumeAiAttendance } from "@/hooks/inbox/useResumeAiAttendance";
 import { ReassignDialog } from "@/components/inbox/ReassignDialog";
+import { ArchiveConversationDialog } from "@/components/inbox/ArchiveConversationDialog";
 import { SnoozeButton } from "@/components/inbox/SnoozeButton";
 import type { ConversationWithContact } from "@/hooks/inbox/useConversationsRealtime";
 
@@ -38,6 +39,7 @@ export function ConversationHeader({ conversation }: Props) {
   const close = useCloseConversation();
   const retomar = useResumeAiAttendance();
   const [reassignOpen, setReassignOpen] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
 
   const c = conversation.contacts ?? null;
   const displayName = c?.display_name?.trim() || c?.name?.trim() || c?.phone_number || "Sem nome";
@@ -146,6 +148,11 @@ export function ConversationHeader({ conversation }: Props) {
             Fechar
           </Button>
         )}
+        {status !== "closed" && status !== "archived" && (
+          <Button size="sm" variant="outline" onClick={() => setArchiveOpen(true)}>
+            Arquivar
+          </Button>
+        )}
         {c?.id && (
           <Button asChild size="sm" variant="ghost">
             <Link href={`/app/contacts/${c.id}`} className="flex items-center gap-1">
@@ -159,6 +166,11 @@ export function ConversationHeader({ conversation }: Props) {
         conversationId={conversation.id}
         open={reassignOpen}
         onOpenChange={setReassignOpen}
+      />
+      <ArchiveConversationDialog
+        conversationId={conversation.id}
+        open={archiveOpen}
+        onOpenChange={setArchiveOpen}
       />
     </div>
   );
