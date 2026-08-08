@@ -14,6 +14,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { audit } from "@/lib/audit";
 import type { createAdminClient } from "@/lib/supabase/admin";
 import { ackToStatus } from "@/lib/types/messaging";
+import { getWahaClient } from "@/lib/waha/client";
 import { bareWaMessageId, chatIdFromWaMessageId } from "@/lib/waha/message-id";
 import { logger } from "@/lib/logger";
 
@@ -22,6 +23,8 @@ type Admin = ReturnType<typeof createAdminClient>;
 interface Session {
   id: string;
   organization_id: string;
+  /** Nome da sessão no WAHA (ex.: "org_xxx") — usado para resolver lid -> telefone via `getPhoneChatIdForLid`. */
+  waha_session_name: string;
 }
 
 export interface WahaPayload {
@@ -242,12 +245,46 @@ function notifyNameOf(p: WahaPayload): string | null {
  * Upsert atômico de contato pela identidade canônica. Retorna null se a
  * identidade for de grupo ou a RPC falhar.
  */
+/**
+ * Contato só-lid pode já ter o telefone real conhecido pelo cache
+ * `noweb.store` do WAHA (ver `getPhoneChatIdForLid`) mesmo sem o WhatsApp ter
+ * repassado o número no payload do webhook. Best-effort de propósito — falha
+ * (store desligado, lid ainda não sincronizado, WAHA fora) deixa o contato
+ * como estava, sem derrubar a ingestão da mensagem. `.is("phone_number",
+ * null)` evita pisar num valor já resolvido por um webhook concorrente
+ * (`message` e `message.any` chegam para o mesmo evento).
+ */
+async function backfillPhoneFromLid(
+  admin: Admin,
+  orgId: string,
+  contactId: string,
+  wahaSessionName: string,
+  lid: string,
+): Promise<void> {
+  const waha = getWahaClient();
+  if (!waha) return;
+  const pnChatId = await waha.getPhoneChatIdForLid(wahaSessionName, lid);
+  if (!pnChatId) return;
+  const resolved = parseChatId(pnChatId);
+  if (resolved.kind !== "phone") return;
+  const { error } = await admin
+    .from("contacts")
+    .update({ phone_number: resolved.phone })
+    .eq("id", contactId)
+    .eq("organization_id", orgId)
+    .is("phone_number", null);
+  if (error) {
+    console.error("[waha.ingest] backfill de telefone via lid falhou", error.message);
+  }
+}
+
 async function upsertContact(
   admin: Admin,
   orgId: string,
   parsed: ChatIdentity,
   chatId: string,
   notifyName: string | null,
+  wahaSessionName: string,
 ): Promise<string | null> {
   // ALLOWLIST, não denylist — e a diferença aqui não é estilo.
   //
@@ -280,7 +317,11 @@ async function upsertContact(
     console.error("[waha.ingest] fn_upsert_wa_contact failed", error.message);
     return null;
   }
-  return (data as string) ?? null;
+  const contactId = (data as string) ?? null;
+  if (contactId && parsed.kind === "lid") {
+    await backfillPhoneFromLid(admin, orgId, contactId, wahaSessionName, parsed.lid);
+  }
+  return contactId;
 }
 
 async function upsertConversation(
@@ -383,7 +424,14 @@ async function handleInbound(
     return;
   }
 
-  const contactId = await upsertContact(admin, session.organization_id, parsed, chatId, notifyNameOf(p));
+  const contactId = await upsertContact(
+    admin,
+    session.organization_id,
+    parsed,
+    chatId,
+    notifyNameOf(p),
+    session.waha_session_name,
+  );
   if (!contactId) return;
   const conversationId = await upsertConversation(admin, session.organization_id, contactId, session.id);
   if (!conversationId) return;
@@ -587,7 +635,14 @@ async function handleOutboundFromUserPhone(
   // fromMe: o pushName do payload é o do OPERADOR, não do destinatário —
   // repassá-lo batizaria o contato do cliente com o nome da loja (e o
   // coalesce do fn_upsert_wa_contact congelaria o nome errado).
-  const contactId = await upsertContact(admin, session.organization_id, parsed, chatId, null);
+  const contactId = await upsertContact(
+    admin,
+    session.organization_id,
+    parsed,
+    chatId,
+    null,
+    session.waha_session_name,
+  );
   if (!contactId) return;
   const conversationId = await upsertConversation(admin, session.organization_id, contactId, session.id);
   if (!conversationId) return;

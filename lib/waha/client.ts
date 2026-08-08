@@ -27,7 +27,12 @@ export class WahaClient {
     const createRes = await fetch(`${this.baseUrl}/api/sessions`, {
       method: "POST",
       headers: { "X-Api-Key": this.apiKey, "Content-Type": "application/json" },
-      body: JSON.stringify({ name, config: {} }),
+      // noweb.store liga o cache local do engine (contatos/chats/mensagens),
+      // que é o que resolve lid -> telefone real (`getPhoneForLid` abaixo);
+      // sem isso a API de lids do WAHA responde 400 pedindo exatamente este
+      // config. fullSync sincroniza o histórico já conhecido pelo WhatsApp no
+      // pareamento — chave ignorada pelo engine WEBJS, sem efeito lá.
+      body: JSON.stringify({ name, config: { noweb: { store: { enabled: true, fullSync: true } } } }),
     });
     if (!createRes.ok && createRes.status !== 422 && createRes.status !== 409) {
       const body = await createRes.text().catch(() => "");
@@ -149,6 +154,29 @@ export class WahaClient {
       if (!res.ok) return null;
       const body = (await res.json()) as { profilePictureURL?: string | null };
       return body.profilePictureURL ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * ChatId (`"5511999999999@c.us"`, MESMO formato de `WahaPayload.from` — dá
+   * pra jogar direto em `parseChatId`) por trás de um lid, via
+   * `GET /api/{session}/lids/{lid}` e o cache `noweb.store` do WAHA — ver
+   * comentário em `startSession`. Nunca lança: sem store habilitado (400
+   * pedindo o config) ou lid ainda desconhecido do WhatsApp (`pn: null`), o
+   * resultado é null igualmente — o chamador (ingest de contato) trata isso
+   * como "segue sem telefone", não como falha.
+   */
+  async getPhoneChatIdForLid(session: string, lid: string): Promise<string | null> {
+    try {
+      const res = await fetch(
+        `${this.baseUrl}/api/${encodeURIComponent(session)}/lids/${encodeURIComponent(lid)}@lid`,
+        { headers: { "X-Api-Key": this.apiKey } },
+      );
+      if (!res.ok) return null;
+      const body = (await res.json()) as { pn?: string | null };
+      return body.pn ?? null;
     } catch {
       return null;
     }
