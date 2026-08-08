@@ -92,8 +92,12 @@ export async function POST(req: NextRequest): Promise<Response> {
     .update({
       name: null,
       display_name: `Contato Anonimizado #${shortId}`,
+      // email_normalized NÃO entra aqui: é `generated always as (...) stored`
+      // (baseline.sql) — Postgres recusa escrita direta ("column can only be
+      // updated to DEFAULT") e a rota inteira falhava com internal_error sem
+      // log nenhum, porque este UPDATE especificamente não tinha console.error.
+      // Zerar `email` já basta: a coluna gerada recalcula sozinha para null.
       email: null,
-      email_normalized: null,
       phone_number: null,
       cpf_encrypted: null,
       cpf_hash: null,
@@ -104,6 +108,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     })
     .eq("id", existing.id);
   if (c1Err) {
+    console.error("[lgpd.anonymize] contacts update failed", c1Err.message);
     return fail("internal_error", `contacts: ${c1Err.message}`, 500, { requestId });
   }
 
