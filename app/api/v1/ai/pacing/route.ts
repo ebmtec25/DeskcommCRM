@@ -87,6 +87,16 @@ export async function PUT(req: NextRequest): Promise<Response> {
   // formato dos degraus para dizer "este número já está aquecido".
   const knobFields = {
     ...camposDiretos,
+    // `channel_knobs.number_activated_at` é NOT NULL (default now()) — a TELA
+    // manda `null` pra dizer "não sei, trate como recém-criado" (o próprio
+    // texto da tela promete isso), mas gravar null direto violava a coluna e
+    // TODO save falhava com "Falha ao salvar os knobs" na primeira conexão sem
+    // linha em channel_knobs ainda (upsert vira INSERT, não tem default a
+    // herdar de uma linha existente). "Recém-criado" = agora, que é
+    // literalmente o que o texto promete — não um workaround.
+    ...(camposDiretos.number_activated_at === null
+      ? { number_activated_at: new Date().toISOString() }
+      : {}),
     ...(skip_warmup !== undefined
       ? { warmup_daily_caps: skip_warmup ? [...WARMUP_PULADO] : null }
       : {}),
@@ -150,6 +160,7 @@ export async function PUT(req: NextRequest): Promise<Response> {
       { onConflict: "organization_id,channel_session_id" },
     );
     if (upErr) {
+      console.error("[ai.pacing] channel_knobs upsert failed", upErr.message);
       return fail("internal_error", "Falha ao salvar os knobs.", 500, { requestId });
     }
   }
@@ -161,6 +172,7 @@ export async function PUT(req: NextRequest): Promise<Response> {
       .eq("id", channel_session_id)
       .eq("organization_id", org.orgId);
     if (dlErr) {
+      console.error("[ai.pacing] daily_message_limit update failed", dlErr.message);
       return fail("internal_error", "Falha ao salvar o teto diário.", 500, { requestId });
     }
   }
