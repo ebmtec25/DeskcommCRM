@@ -368,6 +368,10 @@ export async function GET(_req: NextRequest, ctx: RouteCtx): Promise<Response> {
       .select("*")
       .eq("pipeline_id", pipelineId)
       .neq("status", "archived")
+      // Perdido some do board — vive em /app/perdidos, filtrável (motivo,
+      // valor, data), que serve remarketing melhor que uma coluna no fim de
+      // um board largo que ninguém rola até ver.
+      .neq("status", "lost")
       .order("position_in_stage"),
   ]);
 

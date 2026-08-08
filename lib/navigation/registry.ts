@@ -2,6 +2,7 @@ import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
 
 import { ROLE_RANK, type Role } from "@/lib/auth/types";
 import {
+  Archive,
   Bell,
   BookOpen,
   Brain,
@@ -174,6 +175,14 @@ export const NAV_DESTINATIONS: NavDestination[] = [
     label: "Contatos",
     description: "As pessoas do outro lado da conversa e seu histórico.",
     icon: Users,
+    group: "crm",
+    sidebar: true,
+  },
+  {
+    href: "/app/perdidos",
+    label: "Perdidos",
+    description: "Negócios arquivados — filtre por motivo, valor ou data para remarketing.",
+    icon: Archive,
     group: "crm",
     sidebar: true,
   },

@@ -46,6 +46,23 @@ export const CANONICAL_LOST_REASONS = [
 export type CanonicalLostReason = (typeof CANONICAL_LOST_REASONS)[number];
 
 /**
+ * Rótulo em pt-BR de cada motivo canônico — fonte única. Nasceu duplicada
+ * dentro de `LoseLeadDialog.tsx`; a lista de Perdidos (`/app/perdidos`)
+ * precisava do mesmo rótulo para filtrar, e copiar de novo era o começo da
+ * divergência que este arquivo existe para evitar.
+ */
+export const LOST_REASON_LABELS: Record<CanonicalLostReason, string> = {
+  requested_by_customer: "Cliente solicitou cancelamento",
+  price: "Preço",
+  no_response: "Sem resposta do cliente",
+  product_unavailable: "Produto indisponível",
+  cancelled_by_store: "Cancelado pela loja",
+  cancelled_by_customer: "Cancelado pelo cliente",
+  payment_failed: "Falha no pagamento",
+  other: "Outro motivo",
+};
+
+/**
  * loseLeadSchema accepts canonical reasons OR any string (pipeline-extended).
  * The server-side DB trigger is the source of truth; we keep the Zod schema
  * permissive here to not block tenant-specific extensions.
