@@ -9329,3 +9329,47 @@ comment on function public.fn_liberar_leads_do_agente() is
   'não podia ser removido.';
 
 notify pgrst, 'reload schema';
+
+-- ---- crm_lead_appointments: a agenda do negócio (migration 0116) ----
+-- Timeline (crm_lead_activities) é log imutável; agendamento é estado FUTURO e
+-- mutável (remarcar, cancelar) — por isso tabela própria, não mais um `type`.
+create table if not exists public.crm_lead_appointments (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  lead_id uuid not null references public.crm_leads(id) on delete cascade,
+  contact_id uuid references public.contacts(id) on delete set null,
+  scheduled_at timestamptz not null,
+  note text,
+  status text not null default 'scheduled',
+  created_by_user_id uuid,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+do $$ begin
+  alter table public.crm_lead_appointments
+    add constraint crm_lead_appointments_status_check
+    check (status in ('scheduled', 'cancelled'));
+exception when duplicate_object then null; end $$;
+
+comment on table public.crm_lead_appointments is
+  'A agenda do negócio (migration 0116) — compromissos futuros com o lead, consultável em /app/agenda (org inteira) e no dossiê (por lead). Distinta de crm_lead_activities: aqui é estado mutável, lá é log imutável.';
+comment on column public.crm_lead_appointments.status is
+  'Vocabulário NOSSO, fechado em dois (scheduled|cancelled) — por isso TEM CHECK. Sem "concluído": scheduled_at no passado já significa aconteceu.';
+
+create index if not exists crm_lead_appointments_org_lead_idx
+  on public.crm_lead_appointments (organization_id, lead_id, scheduled_at);
+
+create index if not exists crm_lead_appointments_org_scheduled_idx
+  on public.crm_lead_appointments (organization_id, scheduled_at)
+  where status = 'scheduled';
+
+alter table public.crm_lead_appointments enable row level security;
+
+drop policy if exists tenant_isolation_crm_lead_appointments_all on public.crm_lead_appointments;
+create policy tenant_isolation_crm_lead_appointments_all on public.crm_lead_appointments
+  for all
+  using (organization_id in (select public.fn_user_org_ids()))
+  with check (organization_id in (select public.fn_user_org_ids()));
+
+notify pgrst, 'reload schema';

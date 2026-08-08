@@ -2305,6 +2305,67 @@ export type Database = {
           },
         ]
       }
+      crm_lead_appointments: {
+        Row: {
+          contact_id: string | null
+          created_at: string
+          created_by_user_id: string | null
+          id: string
+          lead_id: string
+          note: string | null
+          organization_id: string
+          scheduled_at: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          contact_id?: string | null
+          created_at?: string
+          created_by_user_id?: string | null
+          id?: string
+          lead_id: string
+          note?: string | null
+          organization_id: string
+          scheduled_at: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          contact_id?: string | null
+          created_at?: string
+          created_by_user_id?: string | null
+          id?: string
+          lead_id?: string
+          note?: string | null
+          organization_id?: string
+          scheduled_at?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_lead_appointments_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_lead_appointments_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "crm_leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_lead_appointments_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       crm_lead_links: {
         Row: {
           created_at: string

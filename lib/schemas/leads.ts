@@ -63,6 +63,16 @@ export const LOST_REASON_LABELS: Record<CanonicalLostReason, string> = {
 };
 
 /**
+ * createAppointmentSchema → POST /api/v1/leads/[id]/appointments
+ * (crm_lead_appointments, migration 0116).
+ */
+export const createAppointmentSchema = z.object({
+  scheduled_at: z.string().datetime({ offset: true }),
+  note: z.string().max(1000).optional(),
+});
+export type CreateAppointmentInput = z.infer<typeof createAppointmentSchema>;
+
+/**
  * loseLeadSchema accepts canonical reasons OR any string (pipeline-extended).
  * The server-side DB trigger is the source of truth; we keep the Zod schema
  * permissive here to not block tenant-specific extensions.

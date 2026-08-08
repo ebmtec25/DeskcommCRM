@@ -34,7 +34,9 @@ export type ActivityType =
   | "reactivation_expired"
   | "followup_scheduled"
   | "followup_cancelled"
-  | "demand_closed";
+  | "demand_closed"
+  | "appointment_scheduled"
+  | "appointment_cancelled";
 
 export const ACTIVITY_LABELS: Record<ActivityType, string> = {
   stage_changed: "Mudou de estágio",
@@ -81,6 +83,11 @@ export const ACTIVITY_LABELS: Record<ActivityType, string> = {
   // invisível na timeline — só existia em audit e event_log, que ninguém lê na
   // tela — e o dossiê de um negócio fechado terminava sem dizer que fechou.
   demand_closed: "Demanda encerrada",
+  // A agenda (crm_lead_appointments) é onde o compromisso VIVE; a timeline só
+  // registra que ele nasceu/morreu, mesmo par ida/volta de followup_* acima —
+  // quem lê o histórico depois de um cancelamento precisa saber que existiu.
+  appointment_scheduled: "Agendamento marcado",
+  appointment_cancelled: "Agendamento cancelado",
 };
 
 /** Quando o tipo é legado/desconhecido, a linha ainda é honesta — sem jargão. */

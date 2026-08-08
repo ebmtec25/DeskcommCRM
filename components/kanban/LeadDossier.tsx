@@ -8,6 +8,7 @@ import { LeadFieldsForm } from "./LeadFieldsForm";
 import { ScoreSlot } from "./ScoreSlot";
 import { LeadTimeline } from "./LeadTimeline";
 import { OwnerBadge } from "./OwnerBadge";
+import { AppointmentsBlock } from "./AppointmentsBlock";
 import { resolveLeadOwner } from "@/lib/kanban/owner";
 
 interface Props {
@@ -147,6 +148,8 @@ export function LeadDossier({
             </button>
           )}
         </section>
+
+        <AppointmentsBlock leadId={lead.id} />
 
         {/* ② timeline */}
         <section className="flex-1 py-3">

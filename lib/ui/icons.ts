@@ -52,6 +52,7 @@ export {
   Copy,
   DownloadSimple,
   Archive,
+  CalendarBlank,
   // feedback
   CheckCircle,
   Warning,
