@@ -89,6 +89,10 @@ export async function listContactsHandler(
     .from("contacts")
     .select(SELECT_COLS)
     .eq("organization_id", ctx.organization_id)
+    // Anonimizado (LGPD) some da listagem — "excluir" tira da tela; o registro
+    // sob a anonimização é o rastro que a auditoria exige, não algo pra
+    // continuar aparecendo em busca/board/inbox como se a pessoa existisse.
+    .eq("is_anonymized", false)
     .order("last_activity_at", { ascending: false, nullsFirst: false })
     .order("created_at", { ascending: false })
     .order("id", { ascending: false })

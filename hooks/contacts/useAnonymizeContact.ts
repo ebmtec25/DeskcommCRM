@@ -21,6 +21,11 @@ export function useAnonymizeContact() {
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ["contact", vars.contact_id] });
       qc.invalidateQueries({ queryKey: ["contacts"] });
+      // Anonimizar mexe no título do lead e some com o contato do Kanban e do
+      // Inbox — sem isto, quem anonimiza pela lista de Contatos ficaria
+      // olhando o card/conversa antiga até um refresh manual.
+      qc.invalidateQueries({ queryKey: ["board"] });
+      qc.invalidateQueries({ queryKey: ["conversations"] });
     },
   });
 }

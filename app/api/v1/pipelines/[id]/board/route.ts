@@ -130,7 +130,7 @@ async function withContacts(
 
   const { data: contacts, error } = await supabase
     .from("contacts")
-    .select("id, name, display_name, phone_number")
+    .select("id, name, display_name, phone_number, is_anonymized")
     .eq("organization_id", organizationId)
     .in("id", contactIds);
   if (error) return { leads, error: error.message };
@@ -142,20 +142,30 @@ async function withContacts(
         name: string | null;
         display_name: string | null;
         phone_number: string | null;
+        is_anonymized: boolean;
       }>
     ).map((c) => [c.id, c]),
   );
 
   return {
-    leads: leads.map((lead) => {
-      if (!lead.contact_id) return lead;
-      const c = byId.get(lead.contact_id);
-      if (!c) return lead;
-      return {
-        ...lead,
-        contact: { name: c.display_name ?? c.name, phone_number: c.phone_number },
-      };
-    }),
+    // Contato anonimizado (LGPD) some do board — "excluir" em Contatos tira o
+    // card do Kanban, não deixa um card sobrando com nome trocado por
+    // "(anonimizado)" pra sempre. O lead em si continua no banco (a cascata
+    // de redact preserva pipeline/estágio/valor de propósito), só não aparece.
+    leads: leads
+      .filter((lead) => {
+        if (!lead.contact_id) return true;
+        return byId.get(lead.contact_id)?.is_anonymized !== true;
+      })
+      .map((lead) => {
+        if (!lead.contact_id) return lead;
+        const c = byId.get(lead.contact_id);
+        if (!c) return lead;
+        return {
+          ...lead,
+          contact: { name: c.display_name ?? c.name, phone_number: c.phone_number },
+        };
+      }),
     error: null,
   };
 }
