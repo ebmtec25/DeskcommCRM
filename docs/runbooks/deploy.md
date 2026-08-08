@@ -95,3 +95,42 @@ nenhum, revertendo o que você acabou de subir.
 Requisitos: >= 4 GB de RAM **ou** swap (medido: ~4min num VPS de 3.8 GB com 4 GB
 de swap). Ao terminar, feche o ciclo — merge na `main` e volte a VPS pra imagem
 oficial.
+
+---
+
+## 5. Incidente conhecido: 504 depois de um redeploy que não foi seu
+
+Visto em 2026-08-08: domínio inteiro respondendo `504 Gateway Timeout` — não só
+a rota que acabou de subir, TUDO, inclusive rotas que já estavam no ar minutos
+antes. Não é o healthcheck (`docker ps` mostrava `healthy`) nem a app (`wget
+http://127.0.0.1:3000/api/v1/health` de dentro do próprio contêiner respondia
+`{"status":"healthy",...}` sem problema).
+
+Causa: o **Traefik da hospedagem roda como serviço Swarm**, gerenciado FORA
+deste projeto. Em algum momento — reboot, atualização, pressão de memória — o
+Swarm reagenda a task do Traefik, e a task nova nasce só na rede default dele
+(`ebmtecNet`), **sem** a rede `deskcommcrm_proxy` que este projeto usa — mesmo
+que o Traefik já estivesse conectado a ela antes. `docker inspect` no
+contêiner do Traefik mostra só uma rede em `.NetworkSettings.Networks` quando
+deveria mostrar duas.
+
+**Diagnóstico rápido:**
+```bash
+docker ps --filter "name=traefik"                     # o hash da task mudou?
+docker inspect <container-do-traefik> \
+  --format '{{json .NetworkSettings.Networks}}'        # falta "deskcommcrm_proxy"?
+```
+
+**Correção (imediata, mas não sobrevive à PRÓXIMA reagendada da task):**
+```bash
+docker network connect deskcommcrm_proxy <container-do-traefik>
+```
+
+**Por que não dá pra deixar permanente por aqui:** `deskcommcrm_proxy` é rede
+`local` (criada pelo `docker-compose.traefik.yml` deste projeto), e
+`docker service update --network-add` só aceita rede `overlay` — o Swarm nem
+enxerga a `local` como candidata (`Error: network deskcommcrm_proxy not
+found`). Resolver de vez exigiria mexer na infraestrutura da hospedagem
+(recriar a rede como overlay attachable, ou trocar como o Traefik é
+provisionado) — fora do escopo deste repositório. Até lá, este é o remédio: um
+`docker network connect`, ~1 segundo, sem rebuild nem redeploy da app.
