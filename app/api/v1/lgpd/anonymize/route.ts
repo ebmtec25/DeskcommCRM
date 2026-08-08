@@ -102,6 +102,15 @@ export async function POST(req: NextRequest): Promise<Response> {
       cpf_encrypted: null,
       cpf_hash: null,
       birthdate: null,
+      // `wa_identity` (generated) cai pra phone_number OU source_metadata->>
+      // 'waha_lid' — número normal já limpa ao zerar phone_number, mas
+      // contato de WhatsApp em modo privacidade (sem telefone visível, só
+      // LID) manteria o mesmo wa_identity aqui, e a PRÓXIMA mensagem
+      // reconectaria nele: exclusão nenhuma, o contato "voltava do zero" pro
+      // mesmo id anonimizado, escondido pra sempre. `fn_lgpd_cascade_redact_
+      // contact` (a cascata completa, migration 0067) já zerava isto certo —
+      // só esta rota simples (o botão) tinha o buraco.
+      source_metadata: {},
       is_anonymized: true,
       anonymized_at: nowIso,
       updated_at: nowIso,
