@@ -22,6 +22,7 @@ export const PUBLIC_PATHS: RegExp[] = [
   /^\/api\/mcp(\/.*)?$/,
   /^\/_next\//,
   /^\/favicon\.ico$/,
+  /^\/icon(\.\w+)?$/,
   /^\/team\/accept-invite\/.+$/,
   /^\/account-suspended$/,
 ];
