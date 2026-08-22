@@ -6,6 +6,7 @@ export interface ConversationCounts {
   unassigned: number;
   mine: number;
   all: number;
+  ai: number;
 }
 
 /**

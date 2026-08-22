@@ -80,6 +80,7 @@ describe("projeção — o que o Conversador pode ver", () => {
         is_blocked: false,
       },
       conversation_id: "7981d2ae-ad34-48d9-815b-3bf4d2e5d7f1",
+      open_demand: { status: "none" },
       last_human_decision: { action: "enviar orçamento", decision: "dismissed", at: "2026-08-01T10:00:00Z" },
       messages: [
         { direction: "inbound", body: "oi, quero remarcar", sent_at: "2026-08-05T10:00:00Z" },

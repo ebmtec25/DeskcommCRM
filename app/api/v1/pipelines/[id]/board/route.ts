@@ -32,6 +32,47 @@ interface RouteCtx {
   params: Promise<{ id: string }>;
 }
 
+/** Anexa somente a identidade necessária ao dossiê, sempre escopada pela org. */
+async function withContacts(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  organizationId: string,
+  leads: Lead[],
+): Promise<{ leads: Lead[]; error: string | null }> {
+  const contactIds = [...new Set(leads.map((lead) => lead.contact_id).filter(Boolean))] as string[];
+  if (contactIds.length === 0) return { leads, error: null };
+
+  const { data, error } = await supabase
+    .from("contacts")
+    .select("id, display_name, phone_number, wa_lid, is_anonymized")
+    .eq("organization_id", organizationId)
+    .in("id", contactIds);
+  if (error) return { leads, error: error.message };
+
+  const byId = new Map<string, NonNullable<Lead["contact"]>>();
+  for (const row of (data ?? []) as Array<{
+    id: string;
+    display_name: string | null;
+    phone_number: string | null;
+    wa_lid: string | null;
+    is_anonymized: boolean;
+  }>) {
+    if (row.is_anonymized) continue;
+    byId.set(row.id, {
+      display_name: row.display_name,
+      phone_number: row.phone_number,
+      phone_protected: row.phone_number === null && row.wa_lid !== null,
+    });
+  }
+
+  return {
+    leads: leads.map((lead) => ({
+      ...lead,
+      contact: lead.contact_id ? (byId.get(lead.contact_id) ?? null) : null,
+    })),
+    error: null,
+  };
+}
+
 /**
  * Anexa a identidade do agente dono (nome + versão publicada) aos leads que têm
  * `owner_kind='ai'`.
@@ -248,7 +289,9 @@ async function withConversas(
   organizationId: string,
   leads: Lead[],
 ): Promise<{ leads: Lead[]; error: string | null }> {
-  const contactIds = [...new Set(leads.map((l) => l.contact_id).filter((c): c is string => !!c))];
+  const contactIds = [
+    ...new Set(leads.map((l) => l.contact_id).filter((c): c is string => !!c)),
+  ];
   if (contactIds.length === 0) return { leads, error: null };
 
   const { data, error } = await supabase
@@ -292,9 +335,7 @@ async function withNextActions(
   leads: Lead[],
   defaultPipelineId: string | null,
 ): Promise<{ leads: Lead[]; error: string | null }> {
-  const contactIds = [
-    ...new Set(leads.map((l) => l.contact_id).filter((c): c is string => !!c)),
-  ];
+  const contactIds = [...new Set(leads.map((l) => l.contact_id).filter((c): c is string => !!c))];
   if (contactIds.length === 0) return { leads, error: null };
 
   const [{ data: estados, error: estadosErr }, { data: candidatos, error: candErr }] =
@@ -381,10 +422,19 @@ export async function GET(_req: NextRequest, ctx: RouteCtx): Promise<Response> {
   if (leadsErr) return fail("internal_error", leadsErr.message, 500, { requestId });
   if (!pipeline) return fail("resource_not_found", "Pipeline não encontrado.", 404, { requestId });
 
-  const leadsWithOwner = await withOwnerAgents(
+  const leadsWithContacts = await withContacts(
     supabase,
     (pipeline as Pipeline).organization_id,
     (leads ?? []) as Lead[],
+  );
+  if (leadsWithContacts.error) {
+    return fail("internal_error", leadsWithContacts.error, 500, { requestId });
+  }
+
+  const leadsWithOwner = await withOwnerAgents(
+    supabase,
+    (pipeline as Pipeline).organization_id,
+    leadsWithContacts.leads,
   );
   if (leadsWithOwner.error) {
     return fail("internal_error", leadsWithOwner.error, 500, { requestId });

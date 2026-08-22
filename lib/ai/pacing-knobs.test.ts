@@ -6,6 +6,7 @@ import {
   pacingKnobsUpdateSchema,
   windowIsValid,
   knobsView,
+  dataDeAtivacaoParaPersistir,
 } from "./pacing-knobs";
 
 const SESSION = "aaaaaaaa-0000-4000-8000-000000000001";
@@ -112,5 +113,15 @@ describe("pacing-knobs — validação com KNOB_BOUNDS (números nunca nascem aq
     expect(view.bounds.intervalMaxMs).toBe(KNOB_BOUNDS.intervalMaxMs);
     expect(view.bounds.daily_limit.min).toBe(1);
     expect(view.overrides).toBeNull();
+  });
+
+  it("converte data vazia em agora sem transformar update parcial em sobrescrita", () => {
+    const agora = new Date("2026-08-22T12:00:00.000Z");
+
+    expect(dataDeAtivacaoParaPersistir(null, agora)).toBe(agora.toISOString());
+    expect(dataDeAtivacaoParaPersistir(undefined, agora)).toBeUndefined();
+    expect(dataDeAtivacaoParaPersistir("2025-01-02T03:04:05.000Z", agora)).toBe(
+      "2025-01-02T03:04:05.000Z",
+    );
   });
 });

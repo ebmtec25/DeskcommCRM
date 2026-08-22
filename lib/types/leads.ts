@@ -51,6 +51,12 @@ export interface Lead {
   owner_agent_id: string | null;
   /** Derivado (não é coluna): quem é o agente dono — ver LeadOwnerAgent. */
   owner_agent?: LeadOwnerAgent | null;
+  /** Identidade mínima do contato anexada pelo board; nunca é coluna de crm_leads. */
+  contact?: {
+    display_name: string | null;
+    phone_number: string | null;
+    phone_protected: boolean;
+  } | null;
   /**
    * Derivado (não é coluna): a próxima ação que o agente propôs para o CONTATO,
    * já roteada para o negócio ativo dele. Ver lib/leads/next-action.ts — só

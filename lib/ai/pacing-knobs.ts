@@ -7,11 +7,7 @@
  */
 import { z } from "zod";
 
-import {
-  KNOB_BOUNDS,
-  PACING_DEFAULTS,
-  type PacingKnobs,
-} from "@/lib/agent-engine/pacing/defaults";
+import { KNOB_BOUNDS, PACING_DEFAULTS, type PacingKnobs } from "@/lib/agent-engine/pacing/defaults";
 import { warmupCapFor } from "@/lib/agent-engine/pacing/engine";
 import { parseWarmupCaps } from "@/lib/agent-engine/pacing/store";
 
@@ -77,6 +73,21 @@ export const pacingKnobsUpdateSchema = z
   .strict();
 
 export type PacingKnobsUpdate = z.infer<typeof pacingKnobsUpdateSchema>;
+
+/**
+ * Traduz o estado vazio da tela para a semântica persistida pelo banco.
+ *
+ * A coluna `channel_knobs.number_activated_at` é NOT NULL. Na tela, `null`
+ * significa "não sei a data; trate o número como recém-ativado", portanto a
+ * data correta é o instante do salvamento. `undefined` continua significando
+ * "não altere este campo" em updates parciais.
+ */
+export function dataDeAtivacaoParaPersistir(
+  value: string | null | undefined,
+  agora: Date = new Date(),
+): string | undefined {
+  return value === null ? agora.toISOString() : value;
+}
 
 export interface ChannelKnobsRow {
   throttle_ms: number | null;

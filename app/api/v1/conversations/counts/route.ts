@@ -46,15 +46,16 @@ export async function GET(): Promise<Response> {
   // O `not in (terminais)` do `mine` espelha o `exclude_finished` da aba, e o
   // espelhamento é o ponto: um badge que conta o que a aba não mostra é pior
   // que badge nenhum — manda o atendente procurar um trabalho que não existe.
-  const [unassigned, mine, all] = await Promise.all([
+  const [unassigned, mine, all, ai] = await Promise.all([
     countExact().is("assigned_to_user_id", null).eq("status", "open"),
     countExact()
       .eq("assigned_to_user_id", user.id)
       .not("status", "in", `(${CONVERSATION_TERMINAL_STATUSES.join(",")})`),
     countExact(),
+    countExact().eq("status", "ai_handling"),
   ]);
 
-  const firstErr = unassigned.error ?? mine.error ?? all.error;
+  const firstErr = unassigned.error ?? mine.error ?? all.error ?? ai.error;
   if (firstErr) {
     return fail("internal_error", firstErr.message, 500, { requestId });
   }
@@ -64,6 +65,7 @@ export async function GET(): Promise<Response> {
       unassigned: unassigned.count ?? 0,
       mine: mine.count ?? 0,
       all: all.count ?? 0,
+      ai: ai.count ?? 0,
     },
     { requestId },
   );

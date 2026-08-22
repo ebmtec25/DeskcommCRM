@@ -18,6 +18,7 @@ import {
   pacingKnobsUpdateSchema,
   knobsView,
   effectiveKnobs,
+  dataDeAtivacaoParaPersistir,
   windowIsValid,
   WARMUP_PULADO,
   type ChannelKnobsRow,
@@ -81,12 +82,20 @@ export async function PUT(req: NextRequest): Promise<Response> {
       details: parsed.error.flatten(),
     });
   }
-  const { channel_session_id, daily_message_limit, skip_warmup, ...camposDiretos } = parsed.data;
+  const {
+    channel_session_id,
+    daily_message_limit,
+    skip_warmup,
+    number_activated_at,
+    ...camposDiretos
+  } = parsed.data;
+  const dataDeAtivacao = dataDeAtivacaoParaPersistir(number_activated_at);
   // `skip_warmup` é pergunta da TELA; a coluna guarda a forma que o motor lê.
   // A tradução mora aqui, num lugar só: a tela não deveria precisar conhecer o
   // formato dos degraus para dizer "este número já está aquecido".
   const knobFields = {
     ...camposDiretos,
+    ...(dataDeAtivacao !== undefined ? { number_activated_at: dataDeAtivacao } : {}),
     ...(skip_warmup !== undefined
       ? { warmup_daily_caps: skip_warmup ? [...WARMUP_PULADO] : null }
       : {}),

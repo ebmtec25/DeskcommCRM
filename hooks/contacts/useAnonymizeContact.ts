@@ -21,6 +21,9 @@ export function useAnonymizeContact() {
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ["contact", vars.contact_id] });
       qc.invalidateQueries({ queryKey: ["contacts"] });
+      qc.invalidateQueries({ queryKey: ["board"] });
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+      qc.invalidateQueries({ queryKey: ["conversation-counts"] });
     },
   });
 }

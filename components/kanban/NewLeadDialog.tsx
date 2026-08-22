@@ -147,11 +147,11 @@ export function NewLeadDialog({ open, onOpenChange, pipelineId, stages, contactI
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="description">Descrição</Label>
+            <Label htmlFor="description">Resumo estratégico</Label>
             <Textarea
               id="description"
               rows={3}
-              placeholder="Contexto, observações, links…"
+              placeholder="Contexto, necessidade, objeções e próxima oportunidade…"
               {...form.register("description")}
             />
           </div>

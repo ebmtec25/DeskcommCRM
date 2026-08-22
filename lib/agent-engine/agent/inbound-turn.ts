@@ -51,6 +51,7 @@ import {
 import type { ProviderRegistry } from '../edge/llm/providers';
 import { HANDOFF_REASON_ORCAMENTO } from '../edge/llm/orcamento';
 import { MIRROR_WARN_ONLY, mirrorLeadStageToCrm } from '../edge/crm/move-lead-stage';
+import { assumeConversationForAi } from '../edge/crm/assume-conversation';
 import { insertInboxItem } from '../db/repository';
 import { buildNativeMediaParts } from './media-parts';
 import { enqueueJob, type JobRow, type Queryable } from '../queue/queue';
@@ -1220,6 +1221,29 @@ async function executarTurnoDoAgente(
       kind: job.kind,
     });
     return; // bot silencia: sem modelo, sem envio neste turno
+  }
+
+  // Só agora a conversa é da IA: pedidos de humano e suspeitas de opt-out já
+  // saíram acima, e contato bloqueado/anonimizado não pode ser assumido. A
+  // transição é best-effort para não derrubar a resposta se a telemetria falhar.
+  if (
+    job.kind === 'inbound_turn' &&
+    !openingContext.context.contact.is_blocked &&
+    !openingContext.lgpd.isAnonymized
+  ) {
+    try {
+      const assumed = await assumeConversationForAi(pool, {
+        organizationId: tenantId,
+        conversationId: input.conversationId,
+        agentId: agentConfig?.agentId ?? null,
+        jobId: job.id,
+      });
+      if (assumed) runLog.info('conversa assumida pela IA');
+    } catch (err) {
+      runLog.warn('marcar conversa como atendida pela IA falhou — turno segue', {
+        error: (err instanceof Error ? err.message : String(err)).slice(0, 120),
+      });
+    }
   }
 
   // F3-07: compaction + flush pré-compaction. Quando o histórico cresce além do limiar,

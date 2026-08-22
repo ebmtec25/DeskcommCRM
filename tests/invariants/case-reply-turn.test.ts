@@ -158,6 +158,7 @@ function fakeLeadContext(): LeadContext {
     lead_id: CONTACT,
     contact: { name: "Contato de Prova", phone: null, email: null, tags: [], is_blocked: false },
     conversation_id: CONV,
+    open_demand: { status: "none" },
     last_human_decision: null,
     messages: [],
   };

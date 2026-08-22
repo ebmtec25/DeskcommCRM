@@ -80,6 +80,7 @@ export const AUDIT_ACTIONS = [
   "conversation.transferred",
   "conversation.released",
   "conversation.closed",
+  "conversation.ai_assumed",
   "conversation.tags_changed",
   "contact.tags_changed",
   // Fila de confirmação (spec 17 §4b): a IA PROPÕE, uma pessoa decide. As três

@@ -70,6 +70,22 @@ vi.mock("@/lib/supabase/server", () => ({
   },
 }));
 
+// A rota passou a reutilizar a cascata canônica, que usa service role para
+// alcançar todas as tabelas da redação. No instrumento, o transporte admin é
+// o mesmo adaptador Postgres efêmero: muda apenas a borda HTTP, não a função
+// SQL nem o código de produção da cascata.
+vi.mock("@/lib/supabase/admin", () => ({
+  createAdminClient: () =>
+    pgComoSupabase(
+      new pg.Pool({
+        connectionString: `postgresql://postgres:postgres@127.0.0.1:${Number(
+          process.env.TEST_DB_PORT ?? 54329,
+        )}/postgres`,
+        max: 2,
+      }),
+    ),
+}));
+
 vi.mock("@/lib/auth/require-role", () => ({
   requireRole: async () => ({ ok: true }),
 }));
@@ -204,7 +220,11 @@ describe("defeito 3 — anonimização LGPD", () => {
       rows[0]!.is_anonymized,
       `a anonimização NÃO aconteceu — resposta ${res.status} ${JSON.stringify(corpo)}`,
     ).toBe(true);
-    expect(rows[0]!.name, "o nome do titular continua no banco").toBeNull();
+    // A cascata canônica substitui o nome por um pseudônimo técnico em vez de
+    // null. O que a LGPD exige aqui é que o nome real não sobreviva.
+    expect(rows[0]!.name, "o nome do titular continua no banco").toMatch(
+      /^Cliente Anonimizado #[0-9a-f]{8}$/,
+    );
     expect(rows[0]!.email, "o e-mail do titular continua no banco").toBeNull();
   });
 });

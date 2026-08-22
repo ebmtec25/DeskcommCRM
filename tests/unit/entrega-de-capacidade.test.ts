@@ -130,6 +130,7 @@ describe("entrega de capacidade ao Operador", () => {
       lead_id: "11111111-1111-4111-8111-111111111111",
       contact: { name: "Ana", phone: null, email: null, tags: [], is_blocked: false },
       conversation_id: null,
+      open_demand: { status: "none" },
       last_human_decision: null,
       messages: [],
     };

@@ -14,6 +14,7 @@
 import type { Queryable } from '../../queue/queue';
 import type { CrmEdgeConfig } from './mcp-client';
 import { deriveLgpdFromContact, type LgpdInput } from '../../guardrails/lgpd/legal-basis';
+import { resolveActiveLeadForContact, type LeadCandidate } from '@/lib/leads/active-lead';
 
 /**
  * Heurística conservadora de contagem: ~3,5 chars/token para pt-br (BPE real fica
@@ -62,6 +63,20 @@ export interface UltimaDecisaoHumana {
   at: string;
 }
 
+/** Contexto comercial do negócio aberto ligado ao contato, sem adivinhar em empate. */
+export type DemandaAbertaContext =
+  | { status: 'none' }
+  | { status: 'ambiguous'; candidate_count: number }
+  | {
+      status: 'active';
+      id: string;
+      title: string;
+      summary: string | null;
+      stage: string | null;
+      tags: string[];
+      created_at: string;
+    };
+
 /** Payload curado que o modelo recebe. */
 export interface LeadContext {
   lead_id: string;
@@ -74,6 +89,8 @@ export interface LeadContext {
     is_blocked: boolean;
   };
   conversation_id: string | null;
+  /** O negócio que a régua canônica do CRM considera ativo para este contato. */
+  open_demand: DemandaAbertaContext;
   /**
    * `null` quando nenhum humano decidiu nada sobre propostas deste contato.
    *
@@ -120,6 +137,13 @@ interface DecisionRow {
   payload: Record<string, unknown> | null;
   reason: string | null;
   performed_at: string;
+}
+
+interface DemandRow extends LeadCandidate {
+  title: string;
+  description: string | null;
+  stage_name: string | null;
+  tags: string[] | null;
 }
 
 /**
@@ -204,6 +228,49 @@ export async function getLeadContext(
   );
   const lastHumanDecision = decisaoRows[0] ? paraDecisao(decisaoRows[0]) : null;
 
+  // O resumo preenchido pela equipe no dossiê também é memória da IA. A mesma
+  // régua usada nas escritas do CRM escolhe o negócio ativo; em empate real o
+  // contexto declara ambiguidade em vez de entregar o negócio errado ao modelo.
+  const [{ rows: demandRows }, { rows: defaultPipelineRows }] = await Promise.all([
+    db.query<DemandRow>(
+      `select l.id, l.organization_id, l.pipeline_id, l.status,
+              l.last_activity_at::text as last_activity_at,
+              l.created_at::text as created_at, l.title, l.description, l.tags,
+              s.name as stage_name
+         from crm_leads l
+         left join crm_stages s
+           on s.id = l.stage_id and s.organization_id = l.organization_id
+        where l.organization_id = $1 and l.contact_id = $2 and l.status = 'open'`,
+      [input.tenantId, input.leadId],
+    ),
+    db.query<{ id: string }>(
+      `select id from crm_pipelines
+        where organization_id = $1 and is_default = true
+        limit 1`,
+      [input.tenantId],
+    ),
+  ]);
+  const demandResolution = resolveActiveLeadForContact(demandRows, {
+    defaultPipelineId: defaultPipelineRows[0]?.id ?? null,
+  });
+  let openDemand: DemandaAbertaContext;
+  if (demandResolution.routed) {
+    const demand = demandRows.find((row) => row.id === demandResolution.leadId)!;
+    openDemand = {
+      status: 'active',
+      id: demand.id,
+      title: demand.title,
+      summary: demand.description,
+      stage: demand.stage_name,
+      tags: demand.tags ?? [],
+      created_at: demand.created_at,
+    };
+  } else if (demandResolution.reason === 'ambiguous_open_leads') {
+    openDemand = { status: 'ambiguous', candidate_count: demandResolution.candidateIds.length };
+  } else {
+    openDemand = { status: 'none' };
+  }
+
   const history: HistoryRow[] = conversationId
     ? (
         await db.query<HistoryRow>(
@@ -242,6 +309,7 @@ export async function getLeadContext(
         is_blocked: contact.is_blocked,
       },
       conversation_id: conversationId,
+      open_demand: openDemand,
       last_human_decision: lastHumanDecision,
     },
     history,
@@ -261,6 +329,7 @@ function fitToBudget(
   history: HistoryRow[],
   maxTokens: number,
 ): LeadContext {
+  let fittedBase = base;
   let messages: LeadContextMessage[] = history.map((m) => {
     const hasMedia = Boolean(m.media_storage_path || m.media_url);
     const derived = m.media_derived_text;
@@ -277,7 +346,7 @@ function fitToBudget(
       ...(hasMedia ? { type: m.type, media_storage_path: m.media_storage_path, media_mime: m.media_mime } : {}),
     };
   });
-  const build = (msgs: LeadContextMessage[]): LeadContext => ({ ...base, messages: msgs });
+  const build = (msgs: LeadContextMessage[]): LeadContext => ({ ...fittedBase, messages: msgs });
   const over = (msgs: LeadContextMessage[]): boolean =>
     countPayloadTokens(JSON.stringify(build(msgs))) > maxTokens;
 
@@ -286,6 +355,22 @@ function fitToBudget(
   }
   while (messages.length === 1 && messages[0]!.body.length > 0 && over(messages)) {
     messages = [{ ...messages[0]!, body: messages[0]!.body.slice(0, Math.floor(messages[0]!.body.length / 2)) }];
+  }
+  // Se o resumo sozinho exceder o teto, ele é encurtado por último: histórico
+  // antigo cai antes, mas nenhum campo livre pode furar o orçamento do modelo.
+  while (
+    fittedBase.open_demand.status === 'active' &&
+    fittedBase.open_demand.summary &&
+    over(messages)
+  ) {
+    const summary = fittedBase.open_demand.summary;
+    fittedBase = {
+      ...fittedBase,
+      open_demand: {
+        ...fittedBase.open_demand,
+        summary: summary.slice(0, Math.floor(summary.length / 2)),
+      },
+    };
   }
   return build(messages);
 }
