@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   NODE_TYPES,
-  NodeType,
+  type NodeType,
   waitConfigSchema,
   aiClassifyConfigSchema,
   actionConfigSchema,
@@ -10,9 +10,9 @@ import {
   flowNodeSchema,
   flowEdgeSchema,
   flowGraphSchema,
-  FlowGraph,
-  FlowNode,
-  FlowEdge,
+  type FlowGraph,
+  type FlowNode,
+  type FlowEdge,
   FALLBACK_BRANCH_ID,
   NO_REPLY_BRANCH_ID,
   CONDITION_TRUE_BRANCH_ID,
@@ -337,6 +337,37 @@ describe('graph-schema', () => {
           extra_key: 'should reject',
         });
         expect(result.success).toBe(false);
+      });
+    });
+
+    describe('tag_update mode', () => {
+      it('accepts the FOLLOW-UP transition and defaults reply cleanup to true', () => {
+        const result = actionConfigSchema.safeParse({
+          mode: 'tag_update',
+          add_tags: ['FOLLOW-UP 2'],
+          remove_tags: ['FOLLOW-UP 1'],
+        });
+        expect(result.success).toBe(true);
+        if (result.success && result.data.mode === 'tag_update') {
+          expect(result.data.remove_added_on_reply).toBe(true);
+        }
+      });
+
+      it('requires at least one tag to add or remove', () => {
+        expect(actionConfigSchema.safeParse({ mode: 'tag_update' }).success).toBe(false);
+      });
+    });
+
+    describe('close_lost mode', () => {
+      it('accepts a recorded loss reason', () => {
+        expect(actionConfigSchema.safeParse({
+          mode: 'close_lost',
+          lost_reason: 'Sem retorno após follow-up',
+        }).success).toBe(true);
+      });
+
+      it('rejects a blank loss reason', () => {
+        expect(actionConfigSchema.safeParse({ mode: 'close_lost', lost_reason: '   ' }).success).toBe(false);
       });
     });
   });

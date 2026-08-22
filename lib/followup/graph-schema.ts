@@ -141,9 +141,11 @@ export const aiClassifyConfigSchema = z
 
 /**
  * Action node configuration schema.
- * Supports two modes:
+ * Supports four modes:
  * - ai_message: generate a message using AI with a prompt hint
  * - template: send a predefined template message
+ * - tag_update: add/remove CRM lead tags idempotently
+ * - close_lost: close the latest CRM opportunity as lost with a reason
  */
 export const actionConfigSchema = z.discriminatedUnion('mode', [
   z.strictObject({
@@ -154,6 +156,18 @@ export const actionConfigSchema = z.discriminatedUnion('mode', [
   z.strictObject({
     mode: z.literal('template'),
     template_id: z.string().uuid(),
+  }),
+  z.strictObject({
+    mode: z.literal('tag_update'),
+    add_tags: z.array(z.string().trim().min(1).max(60)).max(10).default([]),
+    remove_tags: z.array(z.string().trim().min(1).max(60)).max(10).default([]),
+    remove_added_on_reply: z.boolean().default(true),
+  }).refine((c) => c.add_tags.length > 0 || c.remove_tags.length > 0, {
+    message: 'add_tags or remove_tags must contain at least one tag',
+  }),
+  z.strictObject({
+    mode: z.literal('close_lost'),
+    lost_reason: z.string().trim().min(1).max(200),
   }),
 ]);
 

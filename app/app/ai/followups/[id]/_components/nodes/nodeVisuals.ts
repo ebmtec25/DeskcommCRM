@@ -121,7 +121,14 @@ export function describeNodeConfig(type: NodeType, config: FlowNode["config"]): 
     }
     case "action": {
       const c = config as ConfigOf<"action">;
-      return c.mode === "ai_message" ? c.prompt_hint : "Template fixo";
+      if (c.mode === "ai_message") return c.prompt_hint;
+      if (c.mode === "template") return "Modelo de mensagem pronto";
+      if (c.mode === "close_lost") return `Perdido — ${c.lost_reason}`;
+      const partes = [
+        ...c.add_tags.map((tag) => `+${tag}`),
+        ...c.remove_tags.map((tag) => `−${tag}`),
+      ];
+      return partes.join(" · ");
     }
     case "end": {
       const c = config as ConfigOf<"end">;

@@ -80,6 +80,14 @@ export type NodeResult =
   | { kind: "recheck"; next_eval_at: Date }
   // action dead-man: the turn never completed after MAX_ACTION_RECHECKS — give up (engine routes to markDead).
   | { kind: "dead"; reason: string }
+  | {
+      kind: "apply_effect";
+      effect: Extract<
+        Extract<FlowNode, { type: "action" }>["config"],
+        { mode: "tag_update" | "close_lost" }
+      >;
+      next_node_id: string;
+    }
   // outcome is nullable for the 'custom' end-node case (cancel_reason carries the note instead).
   | { kind: "complete"; outcome: EnrollmentOutcome | null; cancel_reason?: string }
   | { kind: "fail"; error: string };
@@ -372,6 +380,17 @@ export function processNode(input: {
     }
 
     case "action": {
+      if (node.config.mode === "tag_update" || node.config.mode === "close_lost") {
+        const edge = selectEdge(edges, node.id, { type: "always" });
+        if (!edge) {
+          return { kind: "fail", error: `action node "${node.id}" has no outbound edge` };
+        }
+        return {
+          kind: "apply_effect",
+          effect: node.config,
+          next_node_id: edge.target,
+        };
+      }
       // At-most-once send: enqueue the turn EXACTLY ONCE per occupancy. First entry
       // (no prior occupancy event) enqueues; a recheck fired while the turn is still in
       // flight — completeTurnForEnrollment (turn-bridge) hasn't advanced the enrollment

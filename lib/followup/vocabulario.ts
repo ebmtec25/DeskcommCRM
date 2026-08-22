@@ -409,6 +409,8 @@ export const MODOS_DE_ESPERA: Record<ModoDeEspera, string> = {
 export const MODOS_DA_ACAO: Record<ModoDaAcao, string> = {
   ai_message: "Mensagem escrita pela IA",
   template: "Modelo de mensagem pronto",
+  tag_update: "Atualizar etiquetas",
+  close_lost: "Marcar oportunidade como perdida",
 };
 
 // ─── nó final ────────────────────────────────────────────────────────────

@@ -12,6 +12,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { logger } from "@/lib/logger";
+import { atualizaEtiquetasDoLeadMaisRecente } from "@/lib/leads/etiquetas";
+import { encerraDemanda } from "@/lib/leads/encerramento";
 
 import { flowGraphSchema, type FlowGraph, type FlowNode } from "./graph-schema";
 import {
@@ -68,6 +70,11 @@ export interface FollowupJobRequest {
   };
 }
 
+export type LeadEffect = Extract<
+  Extract<FlowNode, { type: "action" }>["config"],
+  { mode: "tag_update" | "close_lost" }
+>;
+
 /** DB surface the engine needs — see file header for why this isn't `SupabaseClient` directly. */
 export interface AdminClient {
   claimDueEnrollments(limit: number, leaseSeconds: number): Promise<EnrollmentRow[]>;
@@ -86,6 +93,8 @@ export interface AdminClient {
   updateEnrollment(id: string, orgId: string, patch: EnrollmentPatch): Promise<void>;
   loadFlowPointerName(orgId: string, pointerId: string): Promise<string | null>;
   insertDeadInboxItem(item: { organization_id: string; title: string; body: string; ref_id: string }): Promise<void>;
+  /** Efeito nativo de CRM; obrigatório apenas no adapter que executa o tick. */
+  applyLeadEffect?(orgId: string, contactId: string, effect: LeadEffect, requestId: string): Promise<void>;
 }
 
 export interface TickDeps {
@@ -128,6 +137,8 @@ function eventTypeFor(result: NodeResult): string {
       return result.purpose === "classify" ? "classify_enqueued" : "turn_enqueued";
     case "recheck":
       return "action_recheck";
+    case "apply_effect":
+      return "lead_effect_applied";
     case "complete":
       return "flow_completed";
     // `dead`/`fail` never reach the event-insert (handled at the top of applyResult) — cases
@@ -151,6 +162,14 @@ function eventPayload(result: NodeResult): Record<string, unknown> {
       return { next_eval_at: result.next_eval_at.toISOString() };
     case "enqueue_turn":
       return { purpose: result.purpose, wake_status: result.wake_status };
+    case "apply_effect":
+      return {
+        mode: result.effect.mode,
+        next_node_id: result.next_node_id,
+        ...(result.effect.mode === "tag_update"
+          ? { add_count: result.effect.add_tags.length, remove_count: result.effect.remove_tags.length }
+          : {}),
+      };
     case "complete":
       return { outcome: result.outcome, cancel_reason: result.cancel_reason ?? null };
     case "dead":
@@ -244,7 +263,7 @@ async function applyHandlerFailure(
 }
 
 function tallyOutcome(result: NodeResult, summary: TickSummary): void {
-  if (result.kind === "advance" || result.kind === "complete") {
+  if (result.kind === "advance" || result.kind === "apply_effect" || result.kind === "complete") {
     summary.advanced++;
   } else if (result.kind === "wait" || result.kind === "enqueue_turn" || result.kind === "recheck") {
     summary.scheduled++;
@@ -275,6 +294,18 @@ async function applyResult(
     return;
   }
 
+  if (result.kind === "apply_effect") {
+    if (!db.applyLeadEffect) throw new Error("lead_effect_not_supported");
+    // Efeito antes do evento: se cair entre as escritas, o retry repete uma
+    // mutação idempotente; a ordem inversa poderia perder o efeito para sempre.
+    await db.applyLeadEffect(
+      enrollment.organization_id,
+      enrollment.contact_id,
+      result.effect,
+      `followup:${enrollment.id}:${node.id}:${enrollment.steps_taken}`,
+    );
+  }
+
   const idemKey = `${node.id}:${enrollment.steps_taken}`;
   const { inserted } = await db.insertEnrollmentEvent({
     organization_id: enrollment.organization_id,
@@ -297,6 +328,11 @@ async function applyResult(
       patch.current_node_id = result.next_node_id;
       patch.status = "active";
       patch.next_eval_at = result.next_eval_at.toISOString();
+      break;
+    case "apply_effect":
+      patch.current_node_id = result.next_node_id;
+      patch.status = "active";
+      patch.next_eval_at = clock().toISOString();
       break;
     case "wait":
     case "recheck":
@@ -557,6 +593,39 @@ export function createSupabaseAdminClient(admin: SupabaseClient): AdminClient {
         ref_id: item.ref_id,
       });
       if (error) throw new Error(error.message);
+    },
+    async applyLeadEffect(orgId, contactId, effect, requestId) {
+      const ctx = {
+        organization_id: orgId,
+        actor: { type: "ai_agent" as const, id: "followup-engine", role: "agent" },
+        requestId,
+      };
+
+      if (effect.mode === "tag_update") {
+        const result = await atualizaEtiquetasDoLeadMaisRecente(admin, ctx, contactId, {
+          adicionar: effect.add_tags,
+          remover: effect.remove_tags,
+        });
+        if (!result) throw new Error("lead_not_found_for_contact");
+        return;
+      }
+
+      const { data: lead, error } = await admin
+        .from("crm_leads")
+        .select("id")
+        .eq("organization_id", orgId)
+        .eq("contact_id", contactId)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      if (!lead) throw new Error("lead_not_found_for_contact");
+
+      await encerraDemanda(admin, ctx, {
+        leadId: String(lead.id),
+        desfecho: "lost",
+        motivo: effect.lost_reason,
+      });
     },
   };
 }

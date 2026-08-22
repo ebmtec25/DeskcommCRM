@@ -18,6 +18,24 @@ describe("describeNodeConfig — nó final", () => {
   });
 });
 
+describe("describeNodeConfig — ações de CRM", () => {
+  it("mostra a troca de etiqueta diretamente no cartão", () => {
+    expect(describeNodeConfig("action", {
+      mode: "tag_update",
+      add_tags: ["FOLLOW-UP 2"],
+      remove_tags: ["FOLLOW-UP 1"],
+      remove_added_on_reply: true,
+    })).toBe("+FOLLOW-UP 2 · −FOLLOW-UP 1");
+  });
+
+  it("mostra o motivo configurado no encerramento", () => {
+    expect(describeNodeConfig("action", {
+      mode: "close_lost",
+      lost_reason: "Sem retorno após follow-up",
+    })).toBe("Perdido — Sem retorno após follow-up");
+  });
+});
+
 /**
  * O subtítulo do card de condição anunciava sempre o combinador. No modo
  * uma-saída-por-regra o motor NÃO consulta o combinador — o card estaria

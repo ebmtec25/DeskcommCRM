@@ -53,7 +53,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { EventRow } from "@/lib/event-log/dispatcher";
+import { atualizaEtiquetasDoLeadMaisRecente } from "@/lib/leads/etiquetas";
 import type { EnrollmentPatch } from "./engine";
+import { flowGraphSchema } from "./graph-schema";
 import { triggerConfigSchema } from "./api-schemas";
 import type { EnrollmentOutcome, EnrollmentStatus } from "./node-handlers";
 
@@ -66,6 +68,8 @@ export interface LiveEnrollmentRef {
   id: string;
   status: EnrollmentStatus;
   current_node_id: string;
+  /** Versão pinada do grafo; presente no adapter de produção. */
+  version_id?: string;
   steps_taken: number;
   pointer_id: string;
   handoff_policy: "pause" | "cancel" | "allow";
@@ -89,6 +93,13 @@ export interface ReactivityAdminClient {
     idempotency_key: string;
   }): Promise<{ inserted: boolean }>;
   updateEnrollment(id: string, orgId: string, patch: EnrollmentPatch): Promise<void>;
+  /** Remove as etiquetas declaradas pelos passos configurados para limpeza na resposta. */
+  removeReplyCleanupTags?(
+    orgId: string,
+    contactId: string,
+    versionId: string,
+    requestId: string,
+  ): Promise<void>;
   /**
    * O relógio do BANCO (`fn_agora()`, migration 0147).
    *
@@ -204,6 +215,14 @@ async function reactToInbound(
   let reacted = 0;
   for (const e of waitingReply) {
     if (parseCancelOnReply(e.trigger_config)) {
+      if (e.version_id && db.removeReplyCleanupTags) {
+        await db.removeReplyCleanupTags(
+          row.organization_id,
+          contactId,
+          e.version_id,
+          `followup-reply:${row.id}:${e.id}`,
+        );
+      }
       const key = `reactivity:${row.id}:${e.id}:reactivity_replied`;
       const applied = await applyStep(
         db,
@@ -388,7 +407,7 @@ export function createSupabaseReactivityClient(admin: SupabaseClient): Reactivit
     async loadLiveEnrollmentsForContact(orgId, contactId) {
       const { data: enrollments, error } = await admin
         .from("followup_enrollments")
-        .select("id, status, current_node_id, steps_taken, pointer_id")
+        .select("id, status, current_node_id, version_id, steps_taken, pointer_id")
         .eq("organization_id", orgId)
         .eq("contact_id", contactId)
         .in("status", LIVE_STATUSES);
@@ -410,6 +429,7 @@ export function createSupabaseReactivityClient(admin: SupabaseClient): Reactivit
           id: e.id,
           status: e.status as EnrollmentStatus,
           current_node_id: e.current_node_id,
+          version_id: e.version_id,
           steps_taken: e.steps_taken,
           pointer_id: e.pointer_id,
           handoff_policy: (p?.handoff_policy as LiveEnrollmentRef["handoff_policy"]) ?? "pause",
@@ -428,6 +448,36 @@ export function createSupabaseReactivityClient(admin: SupabaseClient): Reactivit
     async updateEnrollment(id, orgId, patch) {
       const { error } = await admin.from("followup_enrollments").update(patch).eq("id", id).eq("organization_id", orgId);
       if (error) throw new Error(error.message);
+    },
+    async removeReplyCleanupTags(orgId, contactId, versionId, requestId) {
+      const { data: version, error } = await admin
+        .from("followup_flow_versions")
+        .select("graph")
+        .eq("organization_id", orgId)
+        .eq("id", versionId)
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      if (!version) return;
+
+      const graph = flowGraphSchema.parse(version.graph);
+      const tags = new Set<string>();
+      for (const node of graph.nodes) {
+        if (node.type === "action" && node.config.mode === "tag_update" && node.config.remove_added_on_reply) {
+          for (const tag of node.config.add_tags) tags.add(tag);
+        }
+      }
+      if (tags.size === 0) return;
+
+      await atualizaEtiquetasDoLeadMaisRecente(
+        admin,
+        {
+          organization_id: orgId,
+          actor: { type: "ai_agent", id: "followup-reactivity", role: "agent" },
+          requestId,
+        },
+        contactId,
+        { remover: [...tags] },
+      );
     },
     async agoraNoBanco() {
       const { data, error } = await admin.rpc("fn_agora" as never);

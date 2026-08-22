@@ -301,6 +301,39 @@ test.describe("followup flow builder — canvas visual (Task 6.2)", () => {
     await page.screenshot({ path: "test-results/followup-6.2-04-action-configured.png", fullPage: true });
   });
 
+  test("configura a troca de etiquetas e o encerramento como perdido no nó Ação", async ({ page }) => {
+    await login(page, creds.users.manager!.email);
+
+    await page.goto("/app/ai/followups");
+    const flowName = `E2E Ações CRM ${Date.now()}`;
+    await page.getByRole("button", { name: "Novo fluxo" }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByLabel("Nome").fill(flowName);
+    await dialog.getByRole("button", { name: "Criar fluxo" }).click();
+    await expect(dialog).not.toBeVisible();
+    await page.locator("li", { hasText: flowName }).getByRole("link").click();
+    await expect(page.locator(".react-flow")).toBeVisible();
+
+    await page.getByTestId("palette-add-action").click();
+    const actionCard = page.locator('[data-testid^="node-card-action-"]');
+    await actionCard.click();
+    const panel = page.getByTestId("node-config-panel");
+
+    await panel.getByLabel("O que esta ação deve fazer").click();
+    await page.getByRole("option", { name: "Atualizar etiquetas", exact: true }).click();
+    await panel.getByLabel("Adicionar etiquetas").fill("FOLLOW-UP 2");
+    await panel.getByLabel("Remover etiquetas").fill("FOLLOW-UP 1");
+    await expect(panel.getByLabel("Remover ao receber resposta")).toBeChecked();
+    await expect(actionCard).toContainText("+FOLLOW-UP 2 · −FOLLOW-UP 1");
+    await page.screenshot({ path: "test-results/followup-action-tags.png", fullPage: true });
+
+    await panel.getByLabel("O que esta ação deve fazer").click();
+    await page.getByRole("option", { name: "Marcar oportunidade como perdida", exact: true }).click();
+    await panel.getByLabel("Motivo da perda").fill("Sem retorno após follow-up");
+    await expect(actionCard).toContainText("Perdido — Sem retorno após follow-up");
+    await page.screenshot({ path: "test-results/followup-action-lost.png", fullPage: true });
+  });
+
   /**
    * MANDATORY acceptance sequence (Task 6.2 wave gate): build the graph,
    * publish it INCOMPLETE first (errors anchored to the offending nodes, not

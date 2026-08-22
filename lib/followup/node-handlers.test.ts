@@ -597,6 +597,53 @@ describe("processNode — ai_classify / action", () => {
     const result = processNode({ node, edges: [], enrollment: enrollment(), lead: lead(), clock });
     expect(result).toEqual({ kind: "enqueue_turn", purpose: "send_message", wake_status: "active" });
   });
+
+  it("action tag_update applies the effect and advances without enqueuing a message", () => {
+    const node: FlowNode = {
+      id: "tag-2",
+      type: "action",
+      label: "Follow-up 2",
+      position: { x: 0, y: 0 },
+      config: {
+        mode: "tag_update",
+        add_tags: ["FOLLOW-UP 2"],
+        remove_tags: ["FOLLOW-UP 1"],
+        remove_added_on_reply: true,
+      },
+    };
+    const edges = [edge({ source: "tag-2", target: "send-2", condition: { type: "always" } })];
+    const result = processNode({ node, edges, enrollment: enrollment(), lead: lead(), clock });
+    expect(result).toEqual({ kind: "apply_effect", effect: node.config, next_node_id: "send-2" });
+  });
+
+  it("action close_lost carries the configured reason to the CRM effect", () => {
+    const node: FlowNode = {
+      id: "lost",
+      type: "action",
+      label: "Encerrar",
+      position: { x: 0, y: 0 },
+      config: { mode: "close_lost", lost_reason: "Sem retorno após follow-up" },
+    };
+    const edges = [edge({ source: "lost", target: "end", condition: { type: "always" } })];
+    const result = processNode({ node, edges, enrollment: enrollment(), lead: lead(), clock });
+    expect(result).toEqual({ kind: "apply_effect", effect: node.config, next_node_id: "end" });
+  });
+
+  it("action nativa sem saída falha e não aplica efeito", () => {
+    const node: FlowNode = {
+      id: "tag-1",
+      type: "action",
+      label: "Follow-up 1",
+      position: { x: 0, y: 0 },
+      config: {
+        mode: "tag_update",
+        add_tags: ["FOLLOW-UP 1"],
+        remove_tags: [],
+        remove_added_on_reply: true,
+      },
+    };
+    expect(processNode({ node, edges: [], enrollment: enrollment(), lead: lead(), clock }).kind).toBe("fail");
+  });
 });
 
 describe("processNode — end", () => {
