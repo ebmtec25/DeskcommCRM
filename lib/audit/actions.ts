@@ -80,6 +80,7 @@ export const AUDIT_ACTIONS = [
   "conversation.transferred",
   "conversation.released",
   "conversation.closed",
+  "conversation.archived",
   "conversation.ai_assumed",
   "conversation.tags_changed",
   "contact.tags_changed",

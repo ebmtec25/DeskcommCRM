@@ -41,13 +41,15 @@ export function tabToFilter(tab: InboxFiltersValue["tab"]): Partial<Conversation
       return { status: "closed" };
     case "ai":
       return { status: "ai_handling" };
+    case "archived":
+      return { status: "archived" };
     case "all":
     default:
-      return {};
+      return { exclude_archived: true };
   }
 }
 
-const FILTER_TABS: InboxTab[] = ["unassigned", "mine", "all", "closed", "ai"];
+const FILTER_TABS: InboxTab[] = ["unassigned", "mine", "all", "closed", "ai", "archived"];
 
 /**
  * Lê ?filter= (G4-02, deep-link). ?filter=all é HONRADO mesmo para agent — a
@@ -141,14 +143,24 @@ export function InboxLayout({ initialSelectedId = null }: InboxLayoutProps = {})
   const handleVisibleChange = useCallback((ids: string[]) => setVisibleIds(ids), []);
   const handleFocusReply = useCallback(() => composerRef.current?.focus(), []);
   const handleClaim = useCallback(() => {
-    if (!selectedConversation) return;
+    if (
+      !selectedConversation ||
+      selectedConversation.status === "closed" ||
+      selectedConversation.status === "archived"
+    )
+      return;
     claim.mutate({
       conversation_id: selectedConversation.id,
       expected_assignee: selectedConversation.assigned_to_user_id,
     });
   }, [claim, selectedConversation]);
   const handleClose = useCallback(() => {
-    if (!selectedConversation) return;
+    if (
+      !selectedConversation ||
+      selectedConversation.status === "closed" ||
+      selectedConversation.status === "archived"
+    )
+      return;
     close.mutate({ conversation_id: selectedConversation.id });
   }, [close, selectedConversation]);
 
@@ -261,7 +273,10 @@ export function InboxLayout({ initialSelectedId = null }: InboxLayoutProps = {})
               conversationId={selectedConversation.id}
               blockedReason={blockedReason}
               janelaFechada={motivoDaJanela}
-              disabled={selectedConversation.status === "closed"}
+              disabled={
+                selectedConversation.status === "closed" ||
+                selectedConversation.status === "archived"
+              }
               contactName={selectedConversation.contacts?.name ?? null}
               currentContactId={selectedConversation.contact_id}
             />

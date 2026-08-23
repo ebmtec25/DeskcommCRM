@@ -146,16 +146,19 @@ export const openConversationWithContactSchema = z
 export type OpenConversationWithContactInput = z.infer<typeof openConversationWithContactSchema>;
 
 /**
- * Estados TERMINAIS: a conversa acabou e não volta sozinha.
+ * Estados fora das filas de trabalho atuais.
  *
  * Vive aqui, e não espalhado em cada `.not(...)`, porque "acabou" é uma decisão
  * de produto — se um dia `resolved` deixar de ser legado e passar a valer, o
- * lugar de dizer isso é um só.
+ * lugar de dizer isso é um só. `archived` é terminal para a carga atual, mas
+ * uma nova mensagem inbound o reabre; `closed` permanece fechado.
  */
 export const CONVERSATION_TERMINAL_STATUSES = ["closed", "archived"] as const;
 
 export const listConversationsQuerySchema = z.object({
   status: conversationStatusSchema.optional(),
+  /** Esconde somente as arquivadas. Usado por "Todas", que continua incluindo fechadas. */
+  exclude_archived: z.boolean().optional(),
   /**
    * Esconde as conversas terminais (fechada/arquivada).
    *

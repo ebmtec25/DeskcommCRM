@@ -7,6 +7,7 @@ export interface ConversationCounts {
   mine: number;
   all: number;
   ai: number;
+  archived: number;
 }
 
 /**

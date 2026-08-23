@@ -38,6 +38,9 @@ vi.mock("@/hooks/inbox/useClaimConversation", () => ({
 vi.mock("@/hooks/inbox/useCloseConversation", () => ({
   useCloseConversation: () => ({ mutate: vi.fn(), isPending: false }),
 }));
+vi.mock("@/hooks/inbox/useArchiveConversation", () => ({
+  useArchiveConversation: () => ({ mutate: vi.fn(), isPending: false }),
+}));
 vi.mock("@/hooks/inbox/useReleaseConversation", () => ({
   useReleaseConversation: () => ({ mutate: vi.fn(), isPending: false }),
 }));
@@ -106,7 +109,7 @@ describe("header do inbox — não trava a largura da tela", () => {
     renderHeader();
     // Se um dia alguém "resolver" o aperto colapsando ações num menu, este caso
     // reprova. Esconder ação de quem atende é pior que uma segunda linha.
-    for (const rotulo of ["Assumir", "Transferir", "Fechar"]) {
+    for (const rotulo of ["Assumir", "Transferir", "Fechar", "Arquivar"]) {
       expect(screen.getByText(rotulo), `a ação "${rotulo}" sumiu do header`).toBeTruthy();
     }
   });
@@ -124,5 +127,21 @@ describe("header do inbox — não trava a largura da tela", () => {
       classes,
       "sem `xl:hidden`, a duplicata volta e o header ganha uma segunda linha em 1280px",
     ).toContain("xl:hidden");
+  });
+});
+
+describe("header de conversa arquivada", () => {
+  it("não oferece ações que recolocariam a conversa em atendimento por acidente", () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <ConversationHeader conversation={{ ...conversation, status: "archived" }} />
+      </QueryClientProvider>,
+    );
+
+    for (const rotulo of ["Assumir", "Liberar", "Transferir", "Fechar", "Arquivar"]) {
+      expect(screen.queryByText(rotulo)).not.toBeInTheDocument();
+    }
+    expect(screen.getByText("Arquivada")).toBeInTheDocument();
   });
 });

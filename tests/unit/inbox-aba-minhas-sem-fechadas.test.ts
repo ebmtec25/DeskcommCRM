@@ -33,9 +33,13 @@ describe("tabToFilter — o que cada aba significa", () => {
     expect(tabToFilter("closed")).toEqual({ status: "closed" });
   });
 
-  it("as outras abas não ganham o filtro de tabela", () => {
+  it("Todas esconde somente o arquivo; Arquivo mostra somente arquivadas", () => {
+    expect(tabToFilter("all")).toEqual({ exclude_archived: true });
+    expect(tabToFilter("archived")).toEqual({ status: "archived" });
+  });
+
+  it("as outras abas não ganham filtro terminal", () => {
     expect(tabToFilter("unassigned").exclude_finished).toBeUndefined();
-    expect(tabToFilter("all").exclude_finished).toBeUndefined();
     expect(tabToFilter("ai").exclude_finished).toBeUndefined();
   });
 });
@@ -54,6 +58,11 @@ describe("schema da rota", () => {
   it("sem o parâmetro, fica indefinido — nenhuma aba herda o filtro sem pedir", () => {
     const r = listConversationsQuerySchema.safeParse({});
     expect(r.success && r.data.exclude_finished).toBeUndefined();
+  });
+
+  it("aceita o filtro que separa o arquivo da visão Todas", () => {
+    const r = listConversationsQuerySchema.safeParse({ exclude_archived: true });
+    expect(r.success && r.data.exclude_archived).toBe(true);
   });
 
   it("os estados terminais são fechada e arquivada", () => {
@@ -108,6 +117,9 @@ const temNotTerminal = (chamadas: { metodo: string; args: unknown[] }[]) =>
       String(c.args[2]).includes("archived"),
   );
 
+const temExclusaoDoArquivo = (chamadas: { metodo: string; args: unknown[] }[]) =>
+  chamadas.some((c) => c.metodo === "neq" && c.args[0] === "status" && c.args[1] === "archived");
+
 describe("listConversationsHandler — predicado", () => {
   it("com exclude_finished, exclui as terminais no BANCO (não na tela)", async () => {
     expect(temNotTerminal(await rodar({ assigned_to: "me", exclude_finished: true }))).toBe(true);
@@ -116,6 +128,12 @@ describe("listConversationsHandler — predicado", () => {
   it("sem exclude_finished, NÃO exclui nada — Todas e Fechadas seguem inteiras", async () => {
     expect(temNotTerminal(await rodar({ assigned_to: "me" }))).toBe(false);
     expect(temNotTerminal(await rodar({ status: "closed" }))).toBe(false);
+  });
+
+  it("exclude_archived exclui no banco, sem esconder as fechadas", async () => {
+    const chamadas = await rodar({ exclude_archived: true });
+    expect(temExclusaoDoArquivo(chamadas)).toBe(true);
+    expect(temNotTerminal(chamadas)).toBe(false);
   });
 
   it("status terminal + exclude_finished aplica os DOIS: contradição devolve vazio", async () => {
@@ -127,7 +145,9 @@ describe("listConversationsHandler — predicado", () => {
   it("continua filtrando por organização — o filtro novo não desloca o de tenant", async () => {
     const chamadas = await rodar({ assigned_to: "me", exclude_finished: true });
     expect(
-      chamadas.some((c) => c.metodo === "eq" && c.args[0] === "organization_id" && c.args[1] === "org-1"),
+      chamadas.some(
+        (c) => c.metodo === "eq" && c.args[0] === "organization_id" && c.args[1] === "org-1",
+      ),
     ).toBe(true);
   });
 });

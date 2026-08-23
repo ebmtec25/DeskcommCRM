@@ -41,21 +41,23 @@ export async function GET(): Promise<Response> {
       .eq("organization_id", org);
 
   // Espelha tabToFilter (InboxLayout): unassigned = fila aberta sem dono;
-  // mine = atribuídas a mim e ainda ABERTAS; all = tudo que o usuário VÊ.
+  // mine = atribuídas a mim e ainda ABERTAS; all = tudo que o usuário VÊ,
+  // exceto o arquivo (que tem visão e contagem próprias).
   //
   // O `not in (terminais)` do `mine` espelha o `exclude_finished` da aba, e o
   // espelhamento é o ponto: um badge que conta o que a aba não mostra é pior
   // que badge nenhum — manda o atendente procurar um trabalho que não existe.
-  const [unassigned, mine, all, ai] = await Promise.all([
+  const [unassigned, mine, all, ai, archived] = await Promise.all([
     countExact().is("assigned_to_user_id", null).eq("status", "open"),
     countExact()
       .eq("assigned_to_user_id", user.id)
       .not("status", "in", `(${CONVERSATION_TERMINAL_STATUSES.join(",")})`),
-    countExact(),
+    countExact().neq("status", "archived"),
     countExact().eq("status", "ai_handling"),
+    countExact().eq("status", "archived"),
   ]);
 
-  const firstErr = unassigned.error ?? mine.error ?? all.error ?? ai.error;
+  const firstErr = unassigned.error ?? mine.error ?? all.error ?? ai.error ?? archived.error;
   if (firstErr) {
     return fail("internal_error", firstErr.message, 500, { requestId });
   }
@@ -66,6 +68,7 @@ export async function GET(): Promise<Response> {
       mine: mine.count ?? 0,
       all: all.count ?? 0,
       ai: ai.count ?? 0,
+      archived: archived.count ?? 0,
     },
     { requestId },
   );

@@ -19,7 +19,7 @@ import { useConversationTagVocabulary } from "@/hooks/inbox/useConversationTags"
 import { useConversationCounts } from "@/hooks/inbox/useConversationCounts";
 import type { Role, VisibilityMode } from "@/lib/auth/types";
 
-export type InboxTab = "unassigned" | "mine" | "all" | "closed" | "ai";
+export type InboxTab = "unassigned" | "mine" | "all" | "closed" | "ai" | "archived";
 
 const INBOX_TABS: { value: InboxTab; label: string }[] = [
   { value: "unassigned", label: "Fila" },
@@ -27,6 +27,7 @@ const INBOX_TABS: { value: InboxTab; label: string }[] = [
   { value: "all", label: "Todas" },
   { value: "closed", label: "Fechadas" },
   { value: "ai", label: "IA" },
+  { value: "archived", label: "Arquivo" },
 ];
 
 /**
@@ -68,6 +69,7 @@ export function InboxFilters({ value, onChange }: Props) {
     mine: counts?.mine,
     all: counts?.all,
     ai: counts?.ai,
+    archived: counts?.archived,
   };
   // Filtrar por um número que saiu da lista (o operador acabou de excluir o
   // canal) deixa o inbox mostrando um subconjunto — às vezes vazio — sem nada na
@@ -152,24 +154,16 @@ export function InboxFilters({ value, onChange }: Props) {
         </Select>
       )}
 
-      <Tabs
-        value={value.tab}
-        onValueChange={(v) => onChange({ ...value, tab: v as InboxTab })}
-      >
-        <TabsList
-          className="grid h-8 w-full"
-          style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}
-        >
+      <Tabs value={value.tab} onValueChange={(v) => onChange({ ...value, tab: v as InboxTab })}>
+        <TabsList className="grid h-auto w-full grid-cols-3 gap-1">
           {tabs.map((tab) => {
             const meta = INBOX_TABS.find((t) => t.value === tab)!;
             const count = countFor[tab];
             return (
-              <TabsTrigger key={tab} value={tab} className="gap-1 text-[11px]">
+              <TabsTrigger key={tab} value={tab} className="gap-1 px-1 text-[11px]">
                 {meta.label}
                 {typeof count === "number" && count > 0 && (
-                  <span className="text-[10px] tabular-nums text-muted-foreground">
-                    {count}
-                  </span>
+                  <span className="text-[10px] tabular-nums text-muted-foreground">{count}</span>
                 )}
               </TabsTrigger>
             );

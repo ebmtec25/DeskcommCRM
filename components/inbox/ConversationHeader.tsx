@@ -10,6 +10,7 @@ import { useAuth } from "@/hooks/auth/AuthProvider";
 import { useClaimConversation } from "@/hooks/inbox/useClaimConversation";
 import { useReleaseConversation } from "@/hooks/inbox/useReleaseConversation";
 import { useCloseConversation } from "@/hooks/inbox/useCloseConversation";
+import { useArchiveConversation } from "@/hooks/inbox/useArchiveConversation";
 import { useResumeAiAttendance } from "@/hooks/inbox/useResumeAiAttendance";
 import { ReassignDialog } from "@/components/inbox/ReassignDialog";
 import { SnoozeButton } from "@/components/inbox/SnoozeButton";
@@ -40,6 +41,7 @@ export function ConversationHeader({ conversation }: Props) {
   const claim = useClaimConversation();
   const release = useReleaseConversation();
   const close = useCloseConversation();
+  const archive = useArchiveConversation();
   const retomar = useResumeAiAttendance();
   const [reassignOpen, setReassignOpen] = useState(false);
 
@@ -47,8 +49,9 @@ export function ConversationHeader({ conversation }: Props) {
   const displayName = rotuloDoContato(c);
   const phone = c?.phone_number ?? null;
   const status = conversation.status;
-  const isMineAssigned = conversation.assigned_to_user_id === user.id;
-  const isOpen = status === "open" || conversation.assigned_to_user_id == null;
+  const isTerminal = status === "closed" || status === "archived";
+  const isMineAssigned = !isTerminal && conversation.assigned_to_user_id === user.id;
+  const isOpen = !isTerminal && (status === "open" || conversation.assigned_to_user_id == null);
 
   /**
    * A conversa saiu do atendimento automático? As DUAS travas contam: o silêncio
@@ -92,7 +95,11 @@ export function ConversationHeader({ conversation }: Props) {
               a mesma cara de uma conversa normal — e ninguém entende por que as
               respostas automáticas pararam. */}
           {emAtendimentoHumano && (
-            <Badge variant="outline" className="h-4 px-1.5 text-[10px]" data-testid="badge-atendimento-humano">
+            <Badge
+              variant="outline"
+              className="h-4 px-1.5 text-[10px]"
+              data-testid="badge-atendimento-humano"
+            >
               Automático pausado
             </Badge>
           )}
@@ -169,6 +176,24 @@ export function ConversationHeader({ conversation }: Props) {
             }}
           >
             {t("Fechar")}
+          </Button>
+        )}
+        {status !== "archived" && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={archive.isPending}
+            onClick={() => {
+              if (
+                confirm(
+                  "Arquivar esta conversa? Ela sairá das listas ativas, mas o histórico será mantido. Se o contato enviar uma nova mensagem, ela será reaberta.",
+                )
+              ) {
+                archive.mutate({ conversation_id: conversation.id });
+              }
+            }}
+          >
+            {archive.isPending ? "Arquivando..." : t("Arquivar")}
           </Button>
         )}
         {/* `xl:hidden` porque a partir de 1280px o painel lateral de CRM entra

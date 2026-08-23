@@ -35,38 +35,44 @@ beforeAll(() => {
 describe("fn_mark_conversation_message — unread reflete pendência real", () => {
   it("três inbound seguidos ⇒ unread = 3", () => {
     for (let i = 0; i < 3; i++) {
-      sql(
-        `select public.fn_mark_conversation_message('${CONV}', 'inbound', 'msg ${i}', now());`,
-      );
+      sql(`select public.fn_mark_conversation_message('${CONV}', 'inbound', 'msg ${i}', now());`);
     }
     expect(unreadOf(CONV)).toBe(3);
   });
 
   it("outbound zera o contador (resposta dada)", () => {
-    sql(
-      `select public.fn_mark_conversation_message('${CONV}', 'outbound', 'resposta', now());`,
-    );
+    sql(`select public.fn_mark_conversation_message('${CONV}', 'outbound', 'resposta', now());`);
     expect(unreadOf(CONV)).toBe(0);
   });
 
   it("novo inbound após resposta ⇒ unread = 1 (não herda acumulado anterior)", () => {
-    sql(
-      `select public.fn_mark_conversation_message('${CONV}', 'inbound', 'obrigada', now());`,
-    );
+    sql(`select public.fn_mark_conversation_message('${CONV}', 'inbound', 'obrigada', now());`);
     expect(unreadOf(CONV)).toBe(1);
   });
 
   it("inbound carimba contacts.last_activity_at", () => {
-    const antes = sql(
-      `select last_activity_at from public.contacts where id = '${CONTACT}';`,
-    );
-    sql(
-      `select public.fn_mark_conversation_message('${CONV}', 'inbound', 'ping', now());`,
-    );
-    const depois = sql(
-      `select last_activity_at from public.contacts where id = '${CONTACT}';`,
-    );
+    const antes = sql(`select last_activity_at from public.contacts where id = '${CONTACT}';`);
+    sql(`select public.fn_mark_conversation_message('${CONV}', 'inbound', 'ping', now());`);
+    const depois = sql(`select last_activity_at from public.contacts where id = '${CONTACT}';`);
     expect(depois).not.toBe("");
     expect(depois).not.toBe(antes);
+  });
+
+  it("outbound não retira a conversa do arquivo", () => {
+    sql(`update public.conversations set status = 'archived' where id = '${CONV}';`);
+    sql(
+      `select public.fn_mark_conversation_message('${CONV}', 'outbound', 'eco atrasado', now());`,
+    );
+    expect(sql(`select status from public.conversations where id = '${CONV}';`)).toBe("archived");
+  });
+
+  it("novo inbound reabre a arquivada e volta a marcar pendência", () => {
+    const antes = sql(`select status_changed_at from public.conversations where id = '${CONV}';`);
+    sql(`select public.fn_mark_conversation_message('${CONV}', 'inbound', 'voltei', now());`);
+    expect(sql(`select status from public.conversations where id = '${CONV}';`)).toBe("open");
+    expect(unreadOf(CONV)).toBe(1);
+    expect(
+      sql(`select status_changed_at from public.conversations where id = '${CONV}';`),
+    ).not.toBe(antes);
   });
 });

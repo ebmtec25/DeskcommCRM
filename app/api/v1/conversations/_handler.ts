@@ -9,10 +9,7 @@ import { ApiError } from "@/lib/api/types";
 import type { Actor, HandlerCtx } from "@/lib/api/handlers/types";
 import { audit } from "@/lib/audit";
 import { CONVERSATION_TERMINAL_STATUSES } from "@/lib/schemas";
-import type {
-  ListConversationsQuery,
-  PatchConversationInput,
-} from "@/lib/schemas";
+import type { ListConversationsQuery, PatchConversationInput } from "@/lib/schemas";
 import type { Conversation } from "@/lib/types/messaging";
 
 type SB = SupabaseClient;
@@ -101,6 +98,10 @@ export async function listConversationsHandler(
     .limit(q.limit + 1);
 
   if (q.status) query = query.eq("status", q.status);
+  // "Todas" significa todo o histórico operacional, inclusive fechadas, mas
+  // não o arquivo. As arquivadas têm uma visão própria para continuarem
+  // consultáveis sem poluir a caixa de trabalho.
+  if (q.exclude_archived) query = query.neq("status", "archived");
   // Depois do `status` de propósito: pedir um status terminal E `exclude_finished`
   // é contradição, e a resposta certa para uma contradição é lista vazia — não
   // um dos dois lados escolhido em silêncio.
@@ -139,9 +140,7 @@ export async function listConversationsHandler(
     }
     const op = asc ? "gt" : "lt";
     if (c.sort) {
-      query = query.or(
-        `${sortCol}.${op}.${c.sort},and(${sortCol}.eq.${c.sort},id.${op}.${c.id})`,
-      );
+      query = query.or(`${sortCol}.${op}.${c.sort},and(${sortCol}.eq.${c.sort},id.${op}.${c.id})`);
     } else {
       // Página já na região de sort NULL (nulls last): pagina só por id.
       query = query.is(sortCol, null);
@@ -207,6 +206,11 @@ export async function patchConversationHandler(
   if (input.status !== undefined) {
     update.status = input.status;
     update.status_changed_at = now;
+    if (input.status === "archived") {
+      // Arquivo não é trabalho pendente. Uma nova entrada incrementa o contador
+      // novamente e reabre a conversa pela RPC canônica de ingestão.
+      update.unread_count_for_assignee = 0;
+    }
     // Atalho: status='claimed' assume o atendimento se ator for usuário humano.
     if (input.status === "claimed" && ctx.actor.type === "user") {
       update.assigned_to_user_id = ctx.actor.id;
@@ -241,7 +245,9 @@ export async function patchConversationHandler(
         ? "conversation.claimed"
         : input.status === "closed"
           ? "conversation.closed"
-          : "conversation.released";
+          : input.status === "archived"
+            ? "conversation.archived"
+            : "conversation.released";
     await audit({
       action,
       actorUserId: a.actorUserId,
