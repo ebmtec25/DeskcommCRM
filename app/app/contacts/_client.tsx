@@ -77,14 +77,19 @@ export function ContactsListClient() {
 
   return (
     <div className="space-y-4 p-6">
-      <header className="flex items-center justify-between gap-4">
-        <div>
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+        <div className="min-w-0">
           <h1 className="text-2xl font-semibold tracking-tight">Contatos</h1>
           <p className="text-sm text-muted-foreground">
             Customer 360 — busque, filtre e gerencie contatos.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        {/*
+          A estrutura é a da main (o "Importar CSV" do PR #313); o `shrink-0`
+          vem do PR #267, e vale para os DOIS botões agora: numa tela de 390px
+          uma linha de dois botões sem isso comprime os rótulos.
+        */}
+        <div className="flex shrink-0 items-center gap-2">
           <Button variant="outline" onClick={() => setImportOpen(true)}>
             <UploadSimple size={16} weight="bold" aria-hidden />
             <span>Importar CSV</span>
@@ -97,7 +102,7 @@ export function ContactsListClient() {
       </header>
 
       <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface p-2">
-        <div className="relative">
+        <div className="relative w-full sm:w-72">
           <MagnifyingGlass
             size={16}
             className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground"
@@ -108,7 +113,7 @@ export function ContactsListClient() {
             placeholder="Buscar por nome, email ou telefone…"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            className="h-9 w-72 pl-8"
+            className="h-9 w-full pl-8"
           />
         </div>
 

@@ -1,6 +1,7 @@
 /**
  * GET  /api/v1/ai/agents  — list agents da org ativa (manager+).
- *                            Inclui kind, priority, published_version_id, archived_at.
+ *                            Inclui kind, priority, published_version_id, archived_at,
+ *                            e o provider/model da VERSÃO PUBLICADA (ver abaixo).
  *                            Filtro `?include_archived=true` opcional.
  * POST /api/v1/ai/agents  — create agent (admin).
  *                            Mode A (legacy rag_bot): body sem `version` → cria agent
@@ -70,6 +71,7 @@ export async function GET(req: NextRequest): Promise<Response> {
 
   const { data, error } = await query.order("created_at", { ascending: false });
   if (error) return fail("internal_error", "Erro ao listar agents.", 500, { requestId });
+
   return ok(data ?? [], { requestId });
 }
 
