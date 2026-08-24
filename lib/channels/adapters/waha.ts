@@ -13,7 +13,27 @@ import { resolveWhatsappIdForContactCard } from "@/lib/waha/resolve-contact-what
 import { bareWaMessageId, parseWahaMessageId } from "@/lib/waha/message-id";
 import { resolveWahaChatId } from "@/lib/waha/send";
 import type { FetchedMedia } from "@/lib/messaging/media/types";
+import { DETALHE_CREDENCIAL_RECUSADA } from "../health";
 import type { ChannelAdapter, ChannelHealth, OutboundEnvelope, RecipientInput } from "../types";
+
+/**
+ * O HTTP que o WAHA devolveu, lido do PREFIXO da mensagem de erro.
+ *
+ * `lib/waha/client.ts` lança `waha_<status>` ou `waha_<operação>_<status>`, às
+ * vezes seguido do corpo da resposta. Procurar `"404"` com `includes` — como
+ * este arquivo fazia — varreria o CORPO junto: um `waha_stop_500: {"detail":
+ * "upstream 404"}` viraria "sessão parada", dando um transporte quebrado por
+ * explicado.
+ *
+ * Medido, e sem inflar: pelo caminho do `checkHealth` isso NÃO era alcançável
+ * hoje — quem ele chama é `getSessionQr`, e essa lança `waha_<status>` seco,
+ * sem corpo. A troca é robustez, não o conserto de um defeito observado; o que
+ * conserta o defeito observado é o ramo 401/403 abaixo.
+ */
+export function statusHttpDoErroWaha(msg: string): number | null {
+  const m = /^waha_(?:[a-z]+_)?(\d{3})\b/.exec(msg);
+  return m ? Number(m[1]) : null;
+}
 
 export const wahaAdapter: ChannelAdapter = {
   provider: "waha",
@@ -104,7 +124,27 @@ export const wahaAdapter: ChannelAdapter = {
       return { reachable: true, status: r.status ?? null, detail: null };
     } catch (err) {
       const msg = err instanceof Error ? err.message : "erro_desconhecido";
-      if (msg.includes("404")) return { reachable: true, status: "STOPPED", detail: null };
+      const http = statusHttpDoErroWaha(msg);
+
+      // Sessão não existe no transporte → parada. É o único desfecho em que
+      // dá para AFIRMAR o estado da sessão a partir de um erro.
+      if (http === 404) return { reachable: true, status: "STOPPED", detail: null };
+
+      // A chave foi recusada. Não é o estado da sessão que está em jogo — é o
+      // acesso ao transporte inteiro, e enquanto durar NENHUMA conexão
+      // funciona. Continua `reachable: false` porque de fato não se sabe o
+      // estado da sessão; o que muda é o `detail`, que a Central lê para dizer
+      // ao operador que escanear o QR não vai resolver.
+      //
+      // Sem isto, um 401 caía no ramo genérico e virava "Não foi possível
+      // verificar a conexão" — um aviso `warn` que descreve oscilação de rede.
+      // Numa VPS real isso durou TRÊS DIAS: a chave do WAHA tinha sido trocada
+      // por uma segunda cópia do repo, nada funcionava, e a única pista visível
+      // sugeria um soluço passageiro.
+      if (http === 401 || http === 403) {
+        return { reachable: false, status: null, detail: DETALHE_CREDENCIAL_RECUSADA };
+      }
+
       return { reachable: false, status: null, detail: msg.slice(0, 200) };
     }
   },

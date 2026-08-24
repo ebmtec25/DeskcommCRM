@@ -5,6 +5,8 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { getAdapter } from '@/lib/channels';
+import { DETALHE_CREDENCIAL_RECUSADA } from '@/lib/channels/health';
+import { statusHttpDoErroWaha } from '@/lib/channels/adapters/waha';
 
 /** A organização atravessa o seam desde a issue #236. */
 const ORG = "00000000-0000-4000-8000-000000000236";
@@ -143,6 +145,73 @@ describe('adapter WAHA', () => {
       chatId: '5531999998888@c.us',
       file: { url: 'https://x/a.ogg', mimetype: 'audio/ogg' },
       convert: true,
+    });
+  });
+
+  /**
+   * ─── O que estes casos custaram ────────────────────────────────────────────
+   *
+   * Numa VPS de produção, uma segunda cópia do repo recriou o contêiner do WAHA
+   * com a chave do `.env` DELA. A partir dali toda chamada respondia 401. O
+   * `checkHealth` jogava isso no ramo genérico, a Central dizia "não foi
+   * possível verificar a conexão" — a frase de um soluço de rede — e ficou
+   * assim por TRÊS DIAS, com o WhatsApp inteiro parado.
+   */
+  describe('checkHealth traduz o erro do transporte', () => {
+    /** Sobe o WAHA e faz `fetch` responder um HTTP cru (o client lança daí). */
+    function stubWahaHttp(status: number, body = '{}') {
+      vi.stubEnv('WAHA_API_BASE_URL', WAHA_BASE);
+      vi.stubEnv('WAHA_API_KEY', 'hash123');
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(body, { status })));
+    }
+
+    it('401 é credencial recusada, não "não deu para perguntar"', async () => {
+      stubWahaHttp(401, '{"message":"Unauthorized","statusCode":401}');
+      const h = await getAdapter('waha').checkHealth!({ organizationId: ORG, sessionRef: 'org_x' });
+      expect(h.detail).toBe(DETALHE_CREDENCIAL_RECUSADA);
+      // Segue sem afirmar o estado da SESSÃO: o que se sabe é que o acesso ao
+      // transporte foi negado, não que este número caiu.
+      expect(h.status).toBeNull();
+    });
+
+    it('403 idem — chave existe e não vale', async () => {
+      stubWahaHttp(403);
+      const h = await getAdapter('waha').checkHealth!({ organizationId: ORG, sessionRef: 'org_x' });
+      expect(h.detail).toBe(DETALHE_CREDENCIAL_RECUSADA);
+    });
+
+    it('404 é sessão parada — o único estado que dá para afirmar por erro', async () => {
+      stubWahaHttp(404);
+      const h = await getAdapter('waha').checkHealth!({ organizationId: ORG, sessionRef: 'org_x' });
+      expect(h).toEqual({ reachable: true, status: 'STOPPED', detail: null });
+    });
+
+    it('500 fica em "não sei" — inventar estado é o que ensina a ignorar o aviso', async () => {
+      stubWahaHttp(500);
+      const h = await getAdapter('waha').checkHealth!({ organizationId: ORG, sessionRef: 'org_x' });
+      expect(h.reachable).toBe(false);
+      expect(h.status).toBeNull();
+      expect(h.detail).not.toBe(DETALHE_CREDENCIAL_RECUSADA);
+    });
+
+    it('lê o status do PREFIXO, nas duas formas que o client lança', () => {
+      // Duas formas porque `lib/waha/client.ts` tem duas: `getSessionQr` lança
+      // `waha_<status>` seco, e create/start/stop/logout/delete anexam o CORPO
+      // da resposta. Só a primeira chega ao checkHealth hoje — mas a função é
+      // compartilhada, e é o corpo que torna a leitura por `includes` ambígua.
+      expect(statusHttpDoErroWaha('waha_401')).toBe(401);
+      expect(statusHttpDoErroWaha('waha_create_401: {"message":"Unauthorized"}')).toBe(401);
+      expect(statusHttpDoErroWaha('waha_404')).toBe(404);
+
+      // O caso que `includes("404")` erra: o 404 está no CORPO de um 500. Ler o
+      // prefixo devolve o status de verdade; varrer a string inteira daria 404
+      // e transformaria um transporte quebrado em "essa sessão está parada".
+      expect(statusHttpDoErroWaha('waha_stop_500: {"detail":"upstream 404 not found"}')).toBe(500);
+
+      // Nada que não venha do client vira status — inclusive texto que CONTÉM
+      // um número de três dígitos.
+      expect(statusHttpDoErroWaha('fetch failed 401')).toBeNull();
+      expect(statusHttpDoErroWaha('erro_desconhecido')).toBeNull();
     });
   });
 });

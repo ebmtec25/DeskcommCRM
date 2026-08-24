@@ -12,7 +12,7 @@ Ao mudar um invariante aqui, atualize os dois na mesma sessão.
 
 | Se você quer… | Vá para |
 |---|---|
-| saber se sua mudança precisa virar imagem publicada | §Os 7 invariantes, nº 1 |
+| saber se sua mudança precisa virar imagem publicada | §Os 8 invariantes, nº 1 |
 | escolher a tag que uma instalação de cliente consome | §Política de canais |
 | lançar uma versão | §Checklist de release |
 | entender por que o namespace é `melgarafael` e não uma org | o ADR |
@@ -58,7 +58,7 @@ porque a exceção é o que apaga a regra.
 
 ---
 
-## Os 7 invariantes (verificáveis)
+## Os 8 invariantes (verificáveis)
 
 ### 1. Nenhum serviço de produção constrói na máquina do cliente
 
@@ -244,6 +244,40 @@ default que preserva o comportamento anterior**; se ela precisa existir, quem a 
   de `APP_VERSION` (injetada no build via `ARG`) e reprova o retorno ao `npm_package_version`.
   Medido no app real: com `APP_VERSION=9.9.9-teste` o endpoint responde `9.9.9-teste`; sem ela,
   `desconhecido` — nunca um número plausível.
+
+### 8. Uma instalação, um dono — o projeto Docker não se compartilha
+
+Só a árvore que criou os contêineres pode atualizá-los. Uma segunda cópia do repo na
+mesma VPS **recusa** mexer, e diz por quê.
+
+- **Por quê:** `docker compose` deriva o nome do projeto do *basename* do diretório.
+  `/root/DeskcommCRM` e `/root/apagar6/DeskcommCRM` viram ambos `deskcommcrm` — um
+  conjunto só de contêineres, dois `.env` diferentes. Cada `up -d` recria o parque com as
+  credenciais da sua árvore, e a outra passa a falar com serviços que não a reconhecem.
+- **Anti-exemplo real (medido, 2026-08):** o cron rodava o `agent.sh` das duas árvores a
+  cada 5 minutos. Em 21/08 13:30 a cópia de teste recriou o contêiner do WAHA com a chave
+  dela; às 14:47 o app foi recriado da árvore de produção, com outra. Resultado: **três
+  dias** com `waha_create_401` em toda chamada — nenhum número de WhatsApp conectava — e as
+  sessões caindo a cada recriação. O mesmo aconteceu com o `srh`, que ficou com o token da
+  árvore errada e derrubou o rate limit (`GET /api/v1/health` → `redis: down, http_401`).
+- **Por que o `flock` não bastava:** ele tranca por **diretório** (`$PROJECT_DIR/.update.lock`),
+  e as duas árvores pegam locks diferentes enquanto disputam os mesmos contêineres. A trava
+  tem de ser pelo que elas de fato compartilham — o projeto Docker.
+- **Como se detecta:** o label `com.docker.compose.project.working_dir`, que todo contêiner
+  do compose carrega, nomeia a árvore que o criou.
+
+  ```bash
+  docker ps -a --filter "label=com.docker.compose.project=$(basename "$PWD" | tr 'A-Z' 'a-z')" \
+    --format '{{.Names}} => {{.Label "com.docker.compose.project.working_dir"}}'
+  ```
+
+- **Escape:** `DESKCOMM_ASSUMIR_PROJETO=1` assume o parque de propósito. Existe para a
+  instalação que **mudou de pasta** de verdade; é explícito porque assumir por engano é o
+  defeito que o guarda existe para impedir. Uma árvore alheia que já **não está no disco**
+  não conta como rival — senão o guarda nasceria vermelho em quem só moveu a instalação.
+- **Verificação:** `tests/shell/dono-do-projeto.test.sh` (no `pnpm test:shell`) — cobre
+  parque limpo, parque próprio, parque alheio, parque **misto** (o caso medido), pasta
+  movida, o escape, e os dois call sites (`agent.sh` e `update.sh`).
 
 ---
 

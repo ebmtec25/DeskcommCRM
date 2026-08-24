@@ -37,6 +37,13 @@ log_err() {  # log_err <mensagem> — grava com timestamp, corta pra ~200 linhas
   { tail -n 200 "$ERRLOG" > "${ERRLOG}.tmp" && mv "${ERRLOG}.tmp" "$ERRLOG"; } 2>/dev/null || true
 }
 
+# Antes de qualquer outra coisa: esta cópia do repo manda neste projeto Docker?
+#
+# Cedo de propósito — antes até de ANUNCIAR a versão. Uma cópia que não é a dona
+# anunciaria a versão da árvore dela, e o app ofereceria "Atualizar agora" com
+# base num número que não descreve o que está no ar.
+recusar_projeto_de_outra_arvore log_err || exit 0
+
 post() {  # post <json> → corpo da resposta em 2xx; VAZIO em qualquer falha
   # (quem chama, ex. o laço de retry do run_result, usa "saiu vazio" como sinal
   # de falha — por isso o corpo só é impresso no ramo de sucesso).
