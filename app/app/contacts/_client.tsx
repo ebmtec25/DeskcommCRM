@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Plus, MagnifyingGlass } from "@/lib/ui/icons";
+import { Plus, MagnifyingGlass, UploadSimple } from "@/lib/ui/icons";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -16,6 +16,7 @@ import {
 import { useContactList } from "@/hooks/contacts/useContactList";
 import { ContactsTable } from "@/components/contacts/ContactsTable";
 import { NewContactDialog } from "@/components/contacts/NewContactDialog";
+import { ImportContactsDialog } from "@/components/contacts/ImportContactsDialog";
 import { EmptyContacts } from "@/components/empty";
 import type { ContactOrderBy } from "@/lib/schemas/contacts";
 
@@ -24,6 +25,7 @@ const SOURCE_OPTIONS = [
   { value: "manual", label: "Manual" },
   { value: "whatsapp", label: "WhatsApp" },
   { value: "nuvemshop", label: "Nuvemshop" },
+  { value: "import_csv", label: "Importado (CSV)" },
 ];
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
@@ -37,6 +39,7 @@ export function ContactsListClient() {
   const [orderDir, setOrderDir] = useState<"asc" | "desc">("desc");
   const [limit, setLimit] = useState<number>(25);
   const [createOpen, setCreateOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   useEffect(() => {
     const t = setTimeout(() => setSearch(searchInput), 250);
@@ -81,10 +84,16 @@ export function ContactsListClient() {
             Customer 360 — busque, filtre e gerencie contatos.
           </p>
         </div>
-        <Button onClick={() => setCreateOpen(true)}>
-          <Plus size={16} weight="bold" aria-hidden />
-          <span>Novo contato</span>
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => setImportOpen(true)}>
+            <UploadSimple size={16} weight="bold" aria-hidden />
+            <span>Importar CSV</span>
+          </Button>
+          <Button onClick={() => setCreateOpen(true)}>
+            <Plus size={16} weight="bold" aria-hidden />
+            <span>Novo contato</span>
+          </Button>
+        </div>
       </header>
 
       <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface p-2">
@@ -221,6 +230,7 @@ export function ContactsListClient() {
       )}
 
       <NewContactDialog open={createOpen} onOpenChange={setCreateOpen} />
+      <ImportContactsDialog open={importOpen} onOpenChange={setImportOpen} />
     </div>
   );
 }
