@@ -21,6 +21,8 @@ import { ConversationHeader } from "./ConversationHeader";
 import { RetentionNotice } from "./RetentionNotice";
 import { CRMSidePanel } from "./CRMSidePanel";
 import { InboxKeyboardShortcuts } from "./InboxKeyboardShortcuts";
+import { CONVERSATION_QUEUE_STATUSES } from "@/lib/schemas";
+
 import { ShortcutsHelpDialog } from "./ShortcutsHelpDialog";
 
 /**
@@ -31,7 +33,12 @@ import { ShortcutsHelpDialog } from "./ShortcutsHelpDialog";
 export function tabToFilter(tab: InboxFiltersValue["tab"]): Partial<ConversationsFilters> {
   switch (tab) {
     case "unassigned":
-      return { assigned_to: "unassigned", status: "open" };
+      // Os DOIS estados de espera, não só `open`. A conversa que o automático
+      // escalou é `pending` e não aparecia em aba nenhuma que o atendente vê —
+      // "Fila" pedia `open`, "Minhas" exige dono, "IA" filtra `ai_handling` e
+      // "Todas" é escondida do papel `agent` fora do modo `all`. A conversa que
+      // mais precisa de uma pessoa era a única invisível.
+      return { assigned_to: "unassigned", status: [...CONVERSATION_QUEUE_STATUSES] };
     case "mine":
       // Sem `exclude_finished` a aba mostra tudo que o atendente JÁ atendeu —
       // `Fechar` muda o status mas não solta o dono (de propósito: quem atendeu
