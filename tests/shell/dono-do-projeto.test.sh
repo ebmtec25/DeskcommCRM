@@ -108,6 +108,31 @@ check "agent.sh chama o guarda e desiste" \
   grep -qE '^recusar_projeto_de_outra_arvore .*\|\| exit 0' "$KIT_DIR/agent.sh"
 check "update.sh chama o guarda e morre" \
   grep -qE '^recusar_projeto_de_outra_arvore .*\|\| die ' "$KIT_DIR/update.sh"
+# O TERCEIRO call site, e o que faltava: quem INSTALA.
+#
+# O `install.sh` tem um painel próprio para cópia irmã, mas ele vive dentro de
+# `if [ -z "${REVERSE_PROXY:-}" ]` E do ramo em que o irmão é o DONO das portas
+# 80/443. Medido com o harness de VPS falsa: numa VPS com Traefik de painel
+# (Coolify/Hostinger) `decide_proxy` sai por `traefik` antes de comparar árvore;
+# numa pasta que já concluiu uma instalação, o próprio install.sh gravou
+# `REVERSE_PROXY` no .env e o `if` é falso — o instalador desligava o próprio
+# guarda; e com 80/443 livres a decisão é `caddy` na primeira linha. Nos três, o
+# `up -d` subia sobre o parque da produção.
+#
+# Este guarda pergunta pelos CONTÊINERES do projeto, não pelo proxy, então vale
+# nas três entradas. Foi por uma delas que uma aula subiu por cima de uma
+# produção (`docs/doctrine/packaging.md`).
+check "install.sh chama o guarda e morre" \
+  grep -qE '^recusar_projeto_de_outra_arvore .*\|\| die ' "$KIT_DIR/install.sh"
+
+# ANTES da coleta de config: recusar depois de arrancar sete respostas de quem
+# instala é fazer a pessoa trabalhar para ouvir "não". E antes de qualquer
+# escrita — o `.env` desta pasta é justamente o que derrubaria a produção.
+linha_guarda_install="$(grep -n '^recusar_projeto_de_outra_arvore' "$KIT_DIR/install.sh" | cut -d: -f1)"
+linha_coleta="$(grep -n '^fase 2 ' "$KIT_DIR/install.sh" | cut -d: -f1)"
+check "no install.sh o guarda vem ANTES de perguntar qualquer coisa" \
+  test -n "$linha_guarda_install" -a -n "$linha_coleta" \
+       -a "${linha_guarda_install:-9999}" -lt "${linha_coleta:-0}"
 
 # O guarda do agent.sh precisa vir ANTES do POST que anuncia a versão: uma cópia
 # que não é dona anunciaria a versão da árvore DELA, e o app ofereceria

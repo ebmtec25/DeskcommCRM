@@ -545,12 +545,31 @@ porta_publicavel() {  # porta_publicavel <porta>
 # deixando passar proxy que não fosse Traefik), e nas duas o erro só apareceu
 # rodando de verdade numa VPS.
 # Ecoa: caddy | traefik | bloqueia
-decide_proxy() {  # decide_proxy <portas_ocupadas> <projeto_do_dono> <projeto_atual> <imagem> <nome>
+decide_proxy() {  # decide_proxy <portas_ocupadas> <projeto_do_dono> <projeto_atual> <imagem> <nome> [árvore_do_dono] [árvore_atual]
   local ocupadas="${1:-}" dono_proj="${2:-}" meu_proj="${3:-}" img="${4:-}" nome="${5:-}"
+  local dono_dir="${6:-}" meu_dir="${7:-}"
   [ -z "$ocupadas" ] && { printf 'caddy'; return 0; }
   # As portas estão com ESTA MESMA instalação, já no ar: é a re-execução, que o
   # próprio kit ensina como caminho para corrigir uma resposta.
-  [ -n "$dono_proj" ] && [ "$dono_proj" = "$meu_proj" ] && { printf 'caddy'; return 0; }
+  #
+  # Só que "mesma instalação" NÃO é o mesmo que "mesmo nome de projeto": o nome
+  # é o basename da pasta, e toda cópia do repo se chama DeskcommCRM. Duas
+  # árvores irmãs (/root/DeskcommCRM e /root/apagar7/DeskcommCRM) colidem no
+  # nome `deskcommcrm` e esta linha as declarava re-execução uma da outra —
+  # exatamente o caso que a varredura de portas foi escrita para pegar. Medido
+  # numa VPS de produção em 2026-08-24: a instalação de uma aula passou por
+  # aqui, recriou os contêineres do CRM no ar com o .env dela e trocou o banco
+  # da instalação de produção, sem um aviso. Quem separa as duas é a ÁRVORE.
+  #
+  # Árvore desconhecida (contêiner sem o label, ou criado fora do compose) cai
+  # no comportamento anterior de propósito: não dá para AFIRMAR cópia irmã, e
+  # fechar no escuro quebraria a re-execução legítima que o kit ensina.
+  if [ -n "$dono_proj" ] && [ "$dono_proj" = "$meu_proj" ]; then
+    if [ -n "$dono_dir" ] && [ -n "$meu_dir" ] && [ "$dono_dir" != "$meu_dir" ]; then
+      printf 'bloqueia'; return 0
+    fi
+    printf 'caddy'; return 0
+  fi
   eh_traefik "$img" "$nome" && { printf 'traefik'; return 0; }
   printf 'bloqueia'
 }
@@ -750,6 +769,35 @@ fi
 PROJECT_DIR="$(pwd)"
 source "$KIT_DIR/_common.sh"
 
+# ── O invariante 8 também vale para quem INSTALA ────────────────────────────
+#
+# `recusar_projeto_de_outra_arvore` já protegia o `update.sh` (:33) e o
+# `agent.sh` (:45), e não protegia este arquivo — a porta por onde o incidente
+# entrou. O painel de cópia irmã, mais abaixo, cobre o caso em que a instalação
+# do ar é a DONA das portas 80/443; este guarda é o que vale sempre, porque
+# pergunta pelos CONTÊINERES do projeto, não pelo proxy:
+#
+#   - VPS com Traefik do painel (Coolify/Hostinger): lá `decide_proxy` sai por
+#     `traefik` antes de comparar árvore, e o painel nunca é alcançado;
+#   - pasta que já concluiu uma instalação: o próprio install.sh grava
+#     REVERSE_PROXY no .env (:1413), e na rodada seguinte o `if [ -z ... ]` que
+#     embrulha o painel é falso — o instalador desligava o próprio guarda;
+#   - portas 80/443 livres: `decide_proxy` devolve `caddy` na primeira linha.
+#
+# Nos três, `docker compose ... up -d` subia sobre o parque da produção com o
+# .env desta pasta (outro banco, outras chaves) — o sintoma medido foi a senha
+# "parar de funcionar" e as conexões de WhatsApp caírem.
+#
+# AQUI e não no preflight: `projeto_pertence_a_outra_arvore` compara contra
+# `PROJECT_DIR`, que só existe a partir da linha acima. E antes da coleta de
+# config, para não pedir dado nenhum a quem vai ser recusado.
+#
+# Instalação NOVA não é afetada: sem contêiner do projeto no ar, a função
+# devolve vazio e o guarda deixa passar. Re-executar na MESMA pasta idem — a
+# árvore é a mesma. `DESKCOMM_ASSUMIR_PROJETO=1` é a saída para quem move a
+# instalação de lugar de propósito, e é a mesma dos outros dois call sites.
+recusar_projeto_de_outra_arvore || die "Instalação interrompida para não derrubar o CRM que já está no ar nesta VPS."
+
 # ── 3. Coleta de config ─────────────────────────────────────────────────────
 fase 2 "Suas informações"
 step "Configuração"
@@ -791,13 +839,18 @@ porta_publicavel 443 || { portas_ocupadas="${portas_ocupadas:+$portas_ocupadas e
 # O "|| true" não é decorativo: numa atribuição o status do pipeline vira o
 # status do script, e sob `set -e` + `pipefail` um docker ps que falhe (ou um
 # SIGPIPE do consumidor) mataria o instalador mudo, no meio da fase 2.
-dono_portas=""; dono_projeto=""; dono_imagem=""
+dono_portas=""; dono_projeto=""; dono_imagem=""; dono_arvore=""
 if [ -n "$portas_ocupadas" ]; then
   _dono="$(docker ps --format '{{.Names}}|{{.Label "com.docker.compose.project"}}|{{.Image}}|{{.Ports}}' 2>/dev/null | dono_das_portas || true)"
   if [ -n "$_dono" ]; then
     dono_portas="${_dono%%|*}"; _resto="${_dono#*|}"
     dono_projeto="${_resto%%|*}"; dono_imagem="${_resto#*|}"
     unset _resto
+    # De qual cópia do repo saiu esse contêiner. É o que separa "sou eu rodando
+    # de novo" de "é a instalação irmã que está no ar" quando as duas pastas se
+    # chamam DeskcommCRM e por isso compartilham o nome do projeto.
+    dono_arvore="$(docker inspect "$dono_portas" --format '{{index .Config.Labels "com.docker.compose.project.working_dir"}}' 2>/dev/null || true)"
+    dono_arvore="${dono_arvore%/}"
   fi
   unset _dono
 fi
@@ -832,7 +885,8 @@ if [ -z "${REVERSE_PROXY:-}" ]; then
   # A exclusão da própria instalação acontece AQUI, não na varredura: o teste de
   # bind não tem como se auto-excluir, então filtrar o nosso contêiner antes só
   # produzia um "ocupado por ninguém" — bloqueio sem um comando sequer.
-  case "$(decide_proxy "$portas_ocupadas" "$dono_projeto" "$proj_atual" "$dono_imagem" "$dono_portas")" in
+  _minha_arvore="${PROJECT_DIR:-$PWD}"; _minha_arvore="${_minha_arvore%/}"
+  case "$(decide_proxy "$portas_ocupadas" "$dono_projeto" "$proj_atual" "$dono_imagem" "$dono_portas" "$dono_arvore" "$_minha_arvore")" in
   caddy)
     REVERSE_PROXY=caddy
     [ -n "$portas_ocupadas" ] && c_dim "  (as portas 80/443 já estão com esta instalação — seguindo)"
@@ -879,6 +933,24 @@ e, se for mesmo um Traefik, ponha REVERSE_PROXY=traefik no .env e rode de novo."
     # for conhecida — "(imagem )" vazio era o sintoma de um campo perdido.
     ocupante="${dono_portas:+pelo contêiner '${dono_portas}'${dono_imagem:+ (imagem ${dono_imagem})}}"
     ocupante="${ocupante:-por um programa do próprio servidor}"
+    # Cópia irmã tem um diagnóstico próprio: o painel genérico abaixo fala de
+    # "porta ocupada", e quem lê isso numa pasta recém-clonada não liga o aviso
+    # à instalação que está no ar — foi assim que uma aula subiu por cima de uma
+    # produção. Aqui o nome das DUAS pastas aparece.
+    if [ -n "$dono_arvore" ] && [ "$dono_projeto" = "$proj_atual" ] && [ "$dono_arvore" != "$_minha_arvore" ]; then
+      c_red "✖ Já existe um DeskcommCRM NO AR nesta VPS, instalado em ${dono_arvore}."
+      printf '\n%s\n'   "  Esta pasta (${_minha_arvore}) é outra cópia do repo. As duas se chamam"
+      printf '%s\n'     "  DeskcommCRM, então o Docker dá às duas o MESMO nome de projeto"
+      printf '%s\n\n'   "  ('${proj_atual}') — e instalar aqui recriaria os contêineres daquela."
+      printf '%s\n'     "  Na prática: o CRM que está no ar passaria a rodar com o .env DESTA pasta"
+      printf '%s\n\n'   "  (outro banco, outras chaves), e as conexões de WhatsApp cairiam."
+      printf '%s\n'     "  Quer atualizar o que já existe? Use aquela pasta:"
+      printf '%s\n\n'   "       cd ${dono_arvore} && bash hostgator-setup-kit/update.sh"
+      printf '%s\n'     "  Quer mesmo uma SEGUNDA instalação nesta VPS? Ela precisa de nome de"
+      printf '%s\n'     "  projeto e domínio próprios — ponha no .env desta pasta, antes de rodar:"
+      printf '%s\n\n'   "       COMPOSE_PROJECT_NAME=deskcomm-$(basename "${_minha_arvore}" | tr 'A-Z' 'a-z')-2"
+      die "Instalação interrompida para não derrubar o DeskcommCRM que está no ar em ${dono_arvore}."
+    fi
     # Concordância com o número de portas: "A porta 80 e 443 já está ocupada"
     # saiu na prova real e denuncia texto montado sem olhar o próprio dado.
     if [ "$n_ocupadas" -gt 1 ]; then
