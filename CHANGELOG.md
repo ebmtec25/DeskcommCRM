@@ -10,6 +10,16 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 ### ⚠️ Requer atenção
 
+- **O horário em que as automações mandam mensagem passa a ser o seu, e não o do servidor.**
+  A proteção de horário da automação era medida pelo relógio da máquina, que roda em UTC —
+  então a faixa "7h às 22h" era, na prática, **4h às 19h de Brasília**. Duas consequências
+  que você talvez tenha visto sem saber a causa: uma automação disparada às 19h30 não saía e
+  ficava esperando até as 4h da manhã seguinte; e uma disparada de madrugada saía, mandando
+  mensagem para o cliente às 5h. Agora vale o seu fuso, e **vale a faixa que você configurou
+  em Conexões › Proteção de envio** — a mesma que a IA já respeitava. Quem nunca mexeu fica
+  com 7h às 22h, no horário do seu negócio.
+- **Esta mudança mexe no banco de dados** — uma tabela nova (histórico de leads captados) e
+  um estado novo nas automações. O `update.sh` aplica sozinho; não há passo manual.
 - **Assumir uma conversa agora PARA o atendimento automático nela. Antes não parava, e os dois
   respondiam o mesmo cliente.** Quem clicava "Assumir" no Inbox ganhava a conversa na tela, mas o
   automático continuava respondendo por baixo — ele só ficava quieto por 5 minutos depois que o
@@ -25,6 +35,30 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 ### Adicionado
 
+- **"Leads recebidos", em Webhooks: quem chegou pelo formulário, com o que preencheu.**
+  Até aqui, o formulário do seu site entregava o lead e não sobrava registro nenhum de como
+  ele chegou. Agora há uma aba com a lista: nome, data e hora, de qual formulário veio, a
+  página em que a pessoa estava, o endereço de internet dela e as etiquetas de campanha
+  (`utm_source` e companhia). Clicando na linha, todos os campos do formulário como ela
+  preencheu, e um atalho para o lead no funil. Dá para filtrar por busca, por origem, por
+  resultado e por período.
+  **E aparece também quem NÃO entrou.** Um formulário cujos campos o CRM não reconhece era
+  recusado em silêncio: quem colou o endereço no site só sabia que "não chegou nada", sem
+  ter onde olhar. Agora a tentativa aparece na lista como *Não entrou*, com o motivo escrito
+  em português e os campos crus do jeito que vieram — que é o que permite consertar o
+  formulário em vez de adivinhar.
+- **Nas automações, no "então": "Mensagem escrita pela IA".**
+  Antes só dava para mandar um texto pronto com `{{nome}}` e `{{telefone}}`. Se o seu
+  formulário pergunta o segmento, o tamanho da equipe e a maior dificuldade de hoje, quem
+  tem 3 funcionários e quem tem 300 recebiam a mesma frase. Agora você escolhe um agente já
+  **publicado**, escolhe o número, e escreve no campo *"O que a IA deve fazer com esses
+  dados"* — por exemplo, "cite a dificuldade que ela citou e ofereça uma conversa de 15
+  minutos". A IA recebe as respostas do formulário e essa sua instrução, e sabe que é a
+  primeira mensagem de alguém que acabou de preencher e não está esperando resposta. É o
+  mesmo desenho da instrução de um passo de follow-up.
+  Quem envia continua sendo a automação — com horário de envio, descadastro e espaçamento
+  entre mensagens valendo igual. A IA escreve o texto; ela não fala com ninguém por conta
+  própria.
 - **O agente de atualização passa a fixar sozinho a versão que ficou solta**, em até 5
   minutos, sem você fazer nada — ele grava a versão que já está rodando. O que ele **nunca**
   faz é mexer numa configuração que você escreveu à mão: se você escolheu acompanhar um canal
@@ -52,6 +86,17 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 ### Corrigido
 
+- **A automação dizia "Sucesso" para mensagem que não chegou ao cliente.** Era o relato que
+  originou boa parte desta entrega: automação ligada, lead entrando pelo formulário, a aba
+  Atividade mostrando um "Sucesso" verde — e nenhuma mensagem no celular de ninguém. A
+  automação só sabia perguntar se tinha dado erro de programa; ela não olhava se a mensagem
+  de fato saiu. Agora ela olha: quando o envio falha, o resultado aparece como falha, com o
+  motivo em português ("Não conseguimos falar com o serviço de WhatsApp. Confira se ele está
+  no ar."), e um aviso é aberto na Central de Atendimento **nomeando a regra que falhou** —
+  porque um erro que só existe numa aba que ninguém abre é um erro invisível.
+- **A automação que estava só esperando o horário parecia não ter rodado.** Ao adiar um
+  envio, ela não gravava nada: "não apareceu nada na Atividade" e "a automação não funcionou"
+  eram a mesma tela. Agora a espera é um estado visível — **Adiado** —, com o motivo.
 - **Instalar numa VPS que já tem o CRM no ar não derruba mais a instalação existente.**
   O instalador confundia a instalação de outra pasta com ele mesmo sendo rodado de novo e
   subia por cima: o site seguia no ar, mas passando a usar o banco da pasta nova — e o
@@ -443,7 +488,10 @@ Primeira versão marcada do DeskcommCRM. O projeto vinha sendo desenvolvido publ
 
 - **Node 22 é obrigatório para desenvolvimento.** A suíte de invariantes instancia o cliente do Supabase, que exige o `WebSocket` global — nativo apenas a partir do Node 22. Isso não afeta quem apenas hospeda: a VPS roda a imagem pronta.
 
-[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v1.2.1...HEAD
+[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v1.4.1...HEAD
+[1.4.1]: https://github.com/melgarafael/DeskcommCRM/compare/v1.4.0...v1.4.1
+[1.4.0]: https://github.com/melgarafael/DeskcommCRM/compare/v1.3.0...v1.4.0
+[1.3.0]: https://github.com/melgarafael/DeskcommCRM/compare/v1.2.1...v1.3.0
 [1.2.1]: https://github.com/melgarafael/DeskcommCRM/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/melgarafael/DeskcommCRM/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/melgarafael/DeskcommCRM/compare/v1.0.0...v1.1.0
