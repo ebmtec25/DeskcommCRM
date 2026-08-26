@@ -195,6 +195,19 @@ describe("devolver o atendimento ao agente", () => {
     ).toEqual([{ tabela: "contacts", valores: { force_human: false } }]);
   });
 
+  it("resolve o item de inbox do handoff — sem isto, um handoff antigo nunca fechado dedupa o aviso do PRÓXIMO handoff em silêncio", async () => {
+    const cap = novaCaptura();
+    const res = await retomar(cenarioComAtendimentoHumano(), cap);
+
+    expect(res.ok).toBe(true);
+    const noInbox = cap.updates.filter((u) => u.tabela === "agent_inbox_items");
+    expect(
+      noInbox,
+      "performHumanHandoff dedupa por (org, kind='handoff', ref_kind='contact', ref_id, status='open') — " +
+        "se este item não fecha ao devolver, o PRÓXIMO handoff do mesmo contato (motivo novo) não cria aviso nenhum",
+    ).toEqual([{ tabela: "agent_inbox_items", valores: { status: "resolved" } }]);
+  });
+
   it("devolve o comando da conversa: silêncio some, marca de passagem some, dono vira a IA", async () => {
     const cap = novaCaptura();
     await retomar(cenarioComAtendimentoHumano(), cap);

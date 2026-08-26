@@ -198,6 +198,33 @@ export async function devolverAtendimentoAoAgente(
     }
   }
 
+  // (3.5) Fecha o(s) item(ns) de inbox do handoff que está sendo devolvido. Achado
+  // real (2026-08-26): sem isto, o item de `performHumanHandoff` (kind='handoff',
+  // ref_kind='contact') fica 'open' para sempre — devolver ao automático nunca o
+  // tocava. Como o INSERT de lá dedupa por "já existe item aberto deste contato",
+  // um handoff ANTIGO nunca resolvido bloqueia silenciosamente o aviso de TODO
+  // handoff seguinte: a Central mostrava o motivo de 03h da manhã enquanto o lead
+  // esperava, horas depois, por um motivo novo (agendamento) que nunca virou aviso.
+  // Fire-and-forget (não derruba a devolução): o pior caso é o item antigo
+  // continuar aberto, o mesmo defeito que já existia.
+  if (conv.contact_id !== null) {
+    const { error: inboxErr } = await supabase
+      .from("agent_inbox_items")
+      .update({ status: "resolved" })
+      .eq("organization_id", organizationId)
+      .eq("kind", "handoff")
+      .eq("ref_kind", "contact")
+      .eq("ref_id", conv.contact_id)
+      .eq("status", "open");
+    if (inboxErr) {
+      logger.warn("[escalacao.retomada] item de inbox do handoff não foi resolvido", {
+        conversation_id: input.conversationId,
+        contact_id: conv.contact_id,
+        error: inboxErr.message,
+      });
+    }
+  }
+
   // (4) Sinal durável de fim do episódio. AWAITED, não fire-and-forget, pela
   // mesma razão que a rota original documentava: é o ÚNICO produtor do sinal que
   // retoma um follow-up pausado por passagem a humano (lib/followup/reactivity.ts).
