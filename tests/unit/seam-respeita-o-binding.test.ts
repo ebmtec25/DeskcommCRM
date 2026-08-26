@@ -102,7 +102,11 @@ function registrySpiao() {
 
 const cfg = { anthropicApiKey: "chave-anthropic", openaiApiKey: "chave-openai", cacheTtl: "1h" as const };
 
-async function rodar(opts: Parameters<typeof poolFalso>[0] & { purpose: string; model?: string }) {
+async function rodar(opts: Parameters<typeof poolFalso>[0] & {
+  purpose: string;
+  model?: string;
+  llmOverride?: { provider: string; credentialId: string | null };
+}) {
   const { pool, inserts } = poolFalso(opts);
   const { registry, chamadas } = registrySpiao();
   const r = await runModelCall(
@@ -113,6 +117,7 @@ async function rodar(opts: Parameters<typeof poolFalso>[0] & { purpose: string; 
       purpose: opts.purpose,
       messages: [{ role: "user", content: "oi" }],
       ...(opts.model !== undefined ? { model: opts.model } : {}),
+      ...(opts.llmOverride !== undefined ? { llmOverride: opts.llmOverride } : {}),
     },
     { registry },
   );
@@ -129,6 +134,38 @@ describe("o seam usa o modelo que o painel escolheu", () => {
       expect(chamadas[0]).toMatchObject({ provider: "anthropic", modelId: "claude-padrao-da-org" });
       expect(resultado.origem).toBe("padrao_da_organizacao");
     });
+  });
+
+  it("ponto auxiliar sem binding herda o modelo e o provider do agente juntos", async () => {
+    // Regressão observada em produção: o override fazia a config resolver
+    // OpenAI, mas o binding-do-ponto descartava o modelo do agente e recolhia
+    // `claude-sonnet-5` do padrão da organização. A fábrica recebia então a
+    // combinação impossível OpenAI + Claude e o agente ficava mudo.
+    const { chamadas, resultado } = await rodar({
+      purpose: "jailbreak_detect",
+      binding: null,
+      model: "gpt-5-mini",
+      llmOverride: { provider: "openai", credentialId: null },
+    });
+    expect(chamadas[0]).toMatchObject({ provider: "openai", modelId: "gpt-5-mini" });
+    expect(resultado.origem).toBe("agente_publicado");
+  });
+
+  it("binding explícito continua vencendo o fallback herdado do agente", async () => {
+    const { chamadas, resultado } = await rodar({
+      purpose: "jailbreak_detect",
+      binding: {
+        provider: "anthropic",
+        credential_id: null,
+        model_id: "claude-haiku-4-5",
+        base_url: null,
+        is_enabled: true,
+      },
+      model: "gpt-5-mini",
+      llmOverride: { provider: "openai", credentialId: null },
+    });
+    expect(chamadas[0]).toMatchObject({ provider: "anthropic", modelId: "claude-haiku-4-5" });
+    expect(resultado.origem).toBe("binding");
   });
 
   it("com binding, o modelo E o provider do painel chegam à fábrica", async () => {
