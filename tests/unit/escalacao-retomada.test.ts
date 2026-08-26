@@ -199,7 +199,9 @@ describe("devolver o atendimento ao agente", () => {
     const cap = novaCaptura();
     await retomar(cenarioComAtendimentoHumano(), cap);
 
-    const naConversa = cap.updates.find((u) => u.tabela === "conversations");
+    const naConversa = cap.updates.find(
+      (u) => u.tabela === "conversations" && u.valores.assignee_kind === "ai",
+    );
     expect(naConversa?.valores).toMatchObject({
       bot_silenced_until: null,
       last_handoff_at: null,
@@ -207,6 +209,31 @@ describe("devolver o atendimento ao agente", () => {
       assignee_kind: "ai",
       status: "ai_handling",
     });
+  });
+
+  it("limpa o silêncio de conversas irmãs sem dono após reconexão do WhatsApp", async () => {
+    const cap = novaCaptura();
+    await retomar(cenarioComAtendimentoHumano(), cap);
+
+    const limpezasDoContato = cap.updates.filter(
+      (u) =>
+        u.tabela === "conversations" &&
+        u.valores.bot_silenced_until === null &&
+        !("status" in u.valores),
+    );
+    expect(
+      limpezasDoContato,
+      "uma conversa antiga em infinity mantém o contato inteiro bloqueado no harness",
+    ).toEqual([
+      {
+        tabela: "conversations",
+        valores: {
+          bot_silenced_until: null,
+          last_handoff_at: null,
+          last_handoff_reason: null,
+        },
+      },
+    ]);
   });
 
   it("solta o dono humano pela regra que já existe, em vez de escrever a coluna na mão", async () => {
@@ -228,7 +255,9 @@ describe("devolver o atendimento ao agente", () => {
     ]);
     // A coluna do dono NUNCA é escrita direto: quem escreve é a função, que grava
     // o evento de atribuição na mesma transação.
-    const naConversa = cap.updates.find((u) => u.tabela === "conversations");
+    const naConversa = cap.updates.find(
+      (u) => u.tabela === "conversations" && "status" in u.valores,
+    );
     expect(Object.keys(naConversa?.valores ?? {})).not.toContain("assigned_to_user_id");
   });
 
@@ -387,7 +416,9 @@ describe("devolver o atendimento ao agente", () => {
       }),
       cap,
     );
-    const naConversa = cap.updates.find((u) => u.tabela === "conversations");
+    const naConversa = cap.updates.find(
+      (u) => u.tabela === "conversations" && "status" in u.valores,
+    );
     expect(naConversa?.valores.status).toBe("closed");
   });
 });

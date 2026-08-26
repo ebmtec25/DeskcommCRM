@@ -150,6 +150,37 @@ export async function devolverAtendimentoAoAgente(
   if (updErr) return { ok: false, erro: "assignment_conflict", detalhe: updErr.message };
   if (!atualizada) return { ok: false, erro: "assignment_conflict" };
 
+  // Uma reconexão do WhatsApp pode deixar mais de uma conversa para o mesmo
+  // contato. O handoff, porém, é lido no motor no nível do CONTATO: basta uma
+  // conversa antiga continuar com `bot_silenced_until='infinity'` para todos os
+  // turnos novos serem pulados. Foi exatamente o que aconteceu em produção: a
+  // pessoa devolveu uma conversa ao automático, o `force_human` global saiu,
+  // mas o silêncio ficou na conversa criada pela conexão seguinte.
+  //
+  // A volta é, portanto, coerente no contato: limpa o episódio nas conversas
+  // SEM dono humano. Conversa que alguém ainda assumiu fica intocada — liberar
+  // essa conversa por tabela atropelaria uma pessoa que continua atendendo.
+  if (conv.contact_id !== null) {
+    const { error: silenciosErr } = await supabase
+      .from("conversations")
+      .update({
+        bot_silenced_until: null,
+        last_handoff_at: null,
+        last_handoff_reason: null,
+      })
+      .eq("organization_id", organizationId)
+      .eq("contact_id", conv.contact_id)
+      .is("assigned_to_user_id", null);
+    if (silenciosErr) {
+      logger.error("[escalacao.retomada] silêncios irmãos não foram limpos", {
+        conversation_id: input.conversationId,
+        contact_id: conv.contact_id,
+        error: silenciosErr.message,
+      });
+      return { ok: false, erro: "assignment_conflict", detalhe: silenciosErr.message };
+    }
+  }
+
   // (3) A trava que ninguém soltava. Sem esta linha as outras duas não servem de
   // nada: os três guards (worker nativo, harness, before-send) leem daqui.
   if (conv.contact_id !== null) {
