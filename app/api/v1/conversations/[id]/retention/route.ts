@@ -53,19 +53,27 @@ export async function GET(_req: NextRequest, ctx: RouteCtx): Promise<Response> {
     return fail("not_found", "Conversation not found.", 404, { requestId });
   }
 
+  // A tela só deve avisar se o veto ainda é o desfecho ATUAL da conversa — ou seja,
+  // se nenhuma tentativa de envio (veto ou sucesso) aconteceu depois dele. Toda
+  // tentativa do before_send grava um trace, vetada ou não (`runBeforeSend`), então
+  // a tentativa MAIS RECENTE é o estado real. Filtrar só por `vetoed_gate not null`
+  // (sem olhar o que veio depois) mostrava um aviso "resolvido" por até 24h — o
+  // assistente já tinha reescrito e enviado com sucesso, e a tela seguia dizendo
+  // que a resposta estava retida.
   const since = new Date(Date.now() - RETENTION_LOOKBACK_MS).toISOString();
-  const { data: traces, error: traceErr } = await supabase
+  const { data: latestTrace, error: traceErr } = await supabase
     .from("before_send_traces")
     .select("id, created_at, vetoed_gate, vetoed_code")
     .eq("organization_id", activeOrg.orgId)
     .eq("contact_id", conv.contact_id)
-    .not("vetoed_gate", "is", null)
     .gte("created_at", since)
     .order("created_at", { ascending: false })
-    .limit(5);
+    .limit(1)
+    .maybeSingle();
   if (traceErr) {
     return fail("internal_error", "Failed to load retention traces.", 500, { requestId });
   }
+  const traces = latestTrace && latestTrace.vetoed_gate !== null ? [latestTrace] : [];
 
   // Knobs do número (coluna NULL = default conservador do engine) — a UI usa o
   // contexto pra dizer QUAL janela segurou o envio, não a genérica.
