@@ -84,6 +84,18 @@ export interface GateContext {
    */
   optedOut: boolean;
   /**
+   * QUAL dos dois motivos irrevogáveis armou `optedOut` — `is_blocked` (opt-out de
+   * verdade) e `force_human` (comando da conversa passou pro humano) são estados
+   * completamente diferentes e o operador que lê o trace precisa saber qual é qual.
+   * As duas raízes do bug real: (1) `readStopFlags` devolvia só o OR, então o código
+   * de veto era sempre `contato_bloqueado` mesmo quando ninguém pediu pra sair — só um
+   * atendente assumiu a conversa; (2) a tela de retenção (`retention-copy.ts`) traduzia
+   * esse código como "o contato pediu para não receber mensagens", uma acusação falsa
+   * ao cliente. `undefined` só ocorre em teste que constrói `GateContext` à mão sem
+   * setar o campo — o gate cai no default seguro (`opt_out`, o comportamento de antes).
+   */
+  stopReason?: 'opt_out' | 'human_takeover';
+  /**
    * Canal desta tentativa. Nenhum gate pergunta QUEM é o provider (invariante 1
    * de `docs/doctrine/restricao-de-canal.md`) — só o entrega a `capabilitiesOf`
    * para perguntar o que o canal permite.
@@ -222,16 +234,25 @@ export interface Gate {
 /** Gate 1 — STOP/opt-out/força-humano: veto IRREVOGÁVEL (regra dura nº 2), 1ª linha. */
 const stopGate: Gate = {
   name: 'stop',
-  evaluate: (ctx) =>
-    ctx.optedOut
-      ? {
-          pass: false,
-          code: 'contato_bloqueado',
-          reason:
-            'o lead optou por sair do atendimento (bloqueio/opt-out irrevogável) — não é ' +
-            'possível enviar nada a ele; encerre o turno sem tentar de novo.',
-        }
-      : { pass: true },
+  evaluate: (ctx) => {
+    if (!ctx.optedOut) return { pass: true };
+    if (ctx.stopReason === 'human_takeover') {
+      return {
+        pass: false,
+        code: 'atendimento_humano',
+        reason:
+          'o comando desta conversa está com um atendente humano (force_human) — a IA não deve ' +
+          'responder enquanto ele conduz; encerre o turno sem tentar de novo.',
+      };
+    }
+    return {
+      pass: false,
+      code: 'contato_bloqueado',
+      reason:
+        'o lead optou por sair do atendimento (bloqueio/opt-out irrevogável) — não é ' +
+        'possível enviar nada a ele; encerre o turno sem tentar de novo.',
+    };
+  },
 };
 
 /**
@@ -669,7 +690,15 @@ export async function runBeforeSend(args: RunBeforeSendArgs): Promise<BeforeSend
     // Estado confiável carregado SOB o lock (os contadores de cap/janela de copies
     // são racy — precisam ver o que o worker anterior já efetivou).
     const provider = await loadChannelProvider(client, args.tenantId, args.channelSessionId);
-    const optedOut = args.optedOutThisTurn || (await readStopFlags(client, args.tenantId, args.leadId));
+    const stopFlags = await readStopFlags(client, args.tenantId, args.leadId);
+    const isOptOut = args.optedOutThisTurn || stopFlags.isBlocked;
+    const isHumanTakeover = stopFlags.forceHuman;
+    const optedOut = isOptOut || isHumanTakeover;
+    const stopReason: GateContext['stopReason'] = isOptOut
+      ? 'opt_out'
+      : isHumanTakeover
+        ? 'human_takeover'
+        : undefined;
     const pacingCfg = await loadChannelKnobs(client, args.tenantId, args.channelSessionId, args.log);
     const pacingState = await loadPacingState(client, args.tenantId, args.channelSessionId, {
       now: args.now,
@@ -704,6 +733,7 @@ export async function runBeforeSend(args: RunBeforeSendArgs): Promise<BeforeSend
       now: args.now,
       body: args.body,
       optedOut,
+      stopReason,
       provider,
       messagingWindow: { lastInboundAt, ...(args.isTemplate === true ? { isTemplate: true } : {}) },
       pacing: { knobs: pacingCfg.knobs, state: pacingState, crmDailyLimit: args.crmDailyLimit, rng: args.rng },
@@ -863,12 +893,16 @@ export async function loadChannelProvider(
   return provider === undefined ? DEFAULT_CHANNEL_PROVIDER : (provider as ChannelProvider);
 }
 
-async function readStopFlags(db: Queryable, organizationId: string, contactId: string): Promise<boolean> {
-  const { rows } = await db.query<{ stopped: boolean }>(
-    'select (is_blocked or force_human) as stopped from contacts where organization_id = $1 and id = $2',
+async function readStopFlags(
+  db: Queryable,
+  organizationId: string,
+  contactId: string,
+): Promise<{ isBlocked: boolean; forceHuman: boolean }> {
+  const { rows } = await db.query<{ is_blocked: boolean; force_human: boolean }>(
+    'select is_blocked, force_human from contacts where organization_id = $1 and id = $2',
     [organizationId, contactId],
   );
-  return rows[0]?.stopped === true;
+  return { isBlocked: rows[0]?.is_blocked === true, forceHuman: rows[0]?.force_human === true };
 }
 
 /**

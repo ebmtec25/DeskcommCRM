@@ -13,7 +13,7 @@ export interface RetentionContext {
   timezone: string;
 }
 
-export type RetentionKind = "protection" | "compliance" | "quality";
+export type RetentionKind = "protection" | "compliance" | "quality" | "handoff";
 
 export interface RetentionCopy {
   kind: RetentionKind;
@@ -25,12 +25,21 @@ const TITLES: Record<RetentionKind, string> = {
   protection: "Resposta segurada pela proteção do número",
   compliance: "Resposta bloqueada por conformidade",
   quality: "Resposta retida para correção",
+  handoff: "IA pausada — atendimento humano",
 };
 
 /**
  * Copy por código de veto. Códigos de proteção (pacing/spinning) tranquilizam:
  * foi proteção anti-bloqueio, não erro. Conformidade (stop/LGPD) é definitivo.
  * Qualidade (promise/disclosure) explica que o assistente corrige sozinho.
+ *
+ * `atendimento_humano` NÃO é conformidade — é a MESMA trava dura do gate `stop`
+ * (`contacts.is_blocked or force_human`), mas o motivo é o oposto de um opt-out:
+ * ninguém pediu para sair, um atendente assumiu o comando da conversa. Antes desta
+ * distinção, `before-send.ts` emitia `contato_bloqueado` para os dois casos e esta
+ * tela acusava o cliente de ter pedido para não receber mensagens quando, na
+ * verdade, era só um humano no controle — passageiro, some quando o comando volta
+ * ao automático (ver `lib/escalacao/retomada.ts`).
  */
 export function retentionCopy(code: string | null, ctx: RetentionContext): RetentionCopy {
   const janela = `${ctx.window_start_hour}h–${ctx.window_end_hour}h${ctx.allow_sunday ? "" : ", sem domingo"}`;
@@ -65,6 +74,12 @@ export function retentionCopy(code: string | null, ctx: RetentionContext): Reten
       return make(
         "compliance",
         "O contato pediu para não receber mensagens (opt-out). Nada será enviado a ele.",
+      );
+    case "atendimento_humano":
+      return make(
+        "handoff",
+        "Um atendente humano assumiu o comando desta conversa — a IA fica em silêncio enquanto " +
+          "isso e nada foi enviado por ela. Ela volta a responder quando o comando retornar ao automático.",
       );
     case "lgpd_anonymized":
       return make(
