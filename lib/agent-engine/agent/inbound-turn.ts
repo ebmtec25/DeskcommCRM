@@ -112,7 +112,7 @@ import { sendInBubbles } from './split-message';
 import type { DisclosureMode } from '../guardrails/disclosure/template';
 import { decidePromise } from '../guardrails/promise/engine';
 import { loadPromiseTable } from '../guardrails/promise/table';
-import { classifyPromise } from '../guardrails/promise/semantic';
+import { classifyPromise, escalatePromiseSilence } from '../guardrails/promise/semantic';
 import { expectativaDeAtendimento } from '@/lib/escalacao/disponibilidade';
 import { diffCheckpoint } from '@/lib/leads/checkpoint-diff';
 import { emitAgentActivityForContact } from '@/lib/leads/agent-activity';
@@ -1484,6 +1484,13 @@ async function executarTurnoDoAgente(
           )
       : undefined;
   let outOfTablePromiseAttempted = false;
+  // Gap medido em produção (2026-08-26): promessa vetada (F4-01 ou F4-02) NUNCA tem
+  // fail-safe de liberação — correto, liberar seria mandar a promessa proibida. Mas sem
+  // NENHUM sinal pro humano quando o modelo esgota os steps do turno sem reformular, o
+  // lead fica mudo e ninguém sabe (achado real: 4 vetos seguidos de promise_semantic no
+  // mesmo turno, zero envio, zero alerta). Este flag alimenta `escalatePromiseSilence` no
+  // fechamento do turno — só quando NENHUM envio saiu (ver checagem perto do jailbreak).
+  let promiseVetoBlockedTurn = false;
   // Spec 15 (Wave 4 lê este flag): true quando open_human_case abriu um caso NESTE
   // turno — aqui só declara e seta; o consumo (ex.: guardrail de promessa) é da Wave 4.
   let openedCaseThisTurn = false;
@@ -1901,6 +1908,9 @@ async function executarTurnoDoAgente(
             });
           }
           if (chain.status === 'vetoed') {
+            if (chain.code === 'promise_out_of_table' || chain.code === 'promise_semantic') {
+              promiseVetoBlockedTurn = true;
+            }
             // Erro de ENSINO pt-br (mesmo shape de get_lead_context/breaker): o
             // modelo o vê no turno seguinte. NÃO é exceção — não derruba o run.
             return { ok: false, error: { code: chain.code, message: chain.message } };
@@ -2513,6 +2523,20 @@ async function executarTurnoDoAgente(
       runLog.warn('jailbreak: escalação humana criada (flag alta + promessa fora de tabela no turno)', {
         jailbreak_level: jailbreakLevel,
       });
+    }
+  }
+
+  // O gate de promessa não tem (e não deve ter) fail-safe de liberação — liberar
+  // MANDARIA a promessa proibida, o oposto do que o gate existe para impedir. Mas sem
+  // isto, um lead que travou o modelo numa promessa que ele não consegue reformular
+  // dentro do teto de steps fica mudo sem NINGUÉM saber (achado real, ver o comentário
+  // de `promiseVetoBlockedTurn`). `outcomes.length === 0` = nenhum envio saiu no turno
+  // inteiro, por nenhum caminho — só então escala; se outro send_message do mesmo turno
+  // teve sucesso, o lead já recebeu resposta e não é abandono.
+  if (promiseVetoBlockedTurn && outcomes.length === 0) {
+    const created = await escalatePromiseSilence(pool, { tenantId, leadId });
+    if (created > 0) {
+      runLog.warn('promessa vetada sem nenhum envio no turno: escalação humana criada', {});
     }
   }
 

@@ -133,3 +133,38 @@ export function renderSemanticPromiseVeto(suspectPhrase: string | null): string 
     'não autorizada antes de reenviar.'
   );
 }
+
+/**
+ * Escalação humana de RUNTIME quando o gate de promessa (F4-01 ou F4-02) barrou TODAS as
+ * tentativas de envio do turno e nenhuma outra saiu por nenhum caminho — o lead ficou sem
+ * resposta. Este gate NUNCA tem fail-safe de liberação (ao contrário do
+ * `internal_vocabulary_leak`): soltar o envio depois de N vetos mandaria a promessa proibida,
+ * o oposto do que o gate protege. A saída segura é alertar um humano, não desarmar o gate.
+ * Mesmo padrão de dedup de `escalateJailbreakPromise`/`escalateLgpdVeto`: insert-if-not-exists
+ * por (org, ref_kind, ref_id, status='open') — 2× no mesmo episódio aberto → 1 item. Corpo SEM
+ * PII (a suspectPhrase nunca sai daqui, mesma regra do veto). Devolve quantos itens foram
+ * criados (0 = já havia item aberto do episódio).
+ */
+export async function escalatePromiseSilence(
+  db: pg.Pool,
+  input: { tenantId: string; leadId: string },
+): Promise<number> {
+  const { rowCount } = await db.query(
+    `insert into agent_inbox_items (organization_id, kind, severity, title, body, ref_kind, ref_id)
+     select $1, 'other', 'critical', $2, $3, 'promise_silence_escalation', $4
+     where not exists (
+       select 1 from agent_inbox_items
+       where organization_id = $1 and ref_kind = 'promise_silence_escalation' and ref_id = $4 and status = 'open'
+     )`,
+    [
+      input.tenantId,
+      'Lead sem resposta — assistente travou numa promessa não autorizada',
+      'O assistente tentou responder a este lead, mas toda tentativa foi bloqueada pelo guardrail ' +
+        'de promessa (preço/prazo/cortesia fora do autorizado) e o turno terminou sem enviar nada. ' +
+        'O gate não libera a mensagem sozinho de propósito — precisa de um humano para responder ' +
+        'manualmente ou ajustar o que o assistente está tentando prometer.',
+      input.leadId,
+    ],
+  );
+  return rowCount ?? 0;
+}
