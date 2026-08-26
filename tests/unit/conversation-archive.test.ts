@@ -9,16 +9,24 @@ const ORG = "22222222-2222-4222-8222-222222222222";
 const CONVERSA = "44444444-4444-4444-8444-444444444444";
 
 function supabaseStub() {
-  let payload: Record<string, unknown> | null = null;
+  // Duas chamadas de update passam por este stub: a que muda o status
+  // (arquivar) e a que limpa `bot_silenced_until` quando o status vira
+  // terminal (regra do PR #329). `updates[0]` continua sendo a do status,
+  // que é o que os testes abaixo verificam.
+  const updates: Array<Record<string, unknown>> = [];
   const filtros: Array<[string, unknown]> = [];
   const chain = {
     update: (next: Record<string, unknown>) => {
-      payload = next;
+      updates.push(next);
       return chain;
     },
     eq: (field: string, value: unknown) => {
       filtros.push([field, value]);
       return chain;
+    },
+    is: (field: string, value: unknown) => {
+      filtros.push([field, value]);
+      return Promise.resolve({ data: null, error: null });
     },
     select: () => chain,
     maybeSingle: async () => ({
@@ -34,7 +42,7 @@ function supabaseStub() {
 
   return {
     client: { from: () => chain } as never,
-    payload: () => payload,
+    payload: () => updates[0] ?? null,
     filtros,
   };
 }

@@ -105,7 +105,7 @@ describe("precedência entre origens", () => {
     // (ex.: OpenAI + Claude) e o turno morre antes de responder.
     const d = decidirBinding(entrada({ agentePublicado: agente() }));
     expect(d).toMatchObject({
-      origem: "agente_publicado",
+      origem: "herdado_de_quem_chamou",
       provider: "openai",
       credentialId: "cred-openai",
       modelId: "gpt-5-mini",

@@ -8,17 +8,16 @@
  *
  * A ordem, do mais forte ao mais fraco:
  *
- *  1. **Agente publicado nos pontos de conversa** — `agent_turn` e
- *     `operator_turn`. A escolha ali já tem tela própria e vence até binding.
+ *  1. **Agente publicado** — só para os pontos que SÃO o agente conversando
+ *     (`agent_turn`, `operator_turn`). A escolha ali já tem tela própria, e
+ *     duas telas mandando na mesma coisa é como se cria a configuração que
+ *     mente. O painel mostra esses dois como leitura, com link para o agente.
  *  2. **Binding do ponto** — a escolha explícita feita no painel de provedores.
  *     É a superfície nova e é ela que o operador enxerga.
- *  3. **Agente publicado como fallback auxiliar** — quando um classificador
- *     não tem binding nem knob próprio, `auxModelArgs` empresta modelo,
- *     provider e credencial juntos da versão publicada.
- *  4. **Variável de ambiente** — os sete knobs herdados (`COMPACTION_MODEL`,
+ *  3. **Variável de ambiente** — os sete knobs herdados (`COMPACTION_MODEL`,
  *     `STAGE_CLASSIFIER_MODEL`, …). Continuam valendo para quem já os usa, mas
  *     perdem para uma escolha feita na tela: quem clicou depois quis mais.
- *  3.5. **Herança de quem chamou** — o ponto AUXILIAR não tem modelo próprio, e
+ *  4. **Herança de quem chamou** — o ponto AUXILIAR não tem modelo próprio, e
  *     quando o knob está vazio ele empresta o do agente publicado (ou o do
  *     roteador de intenção). Empresta os TRÊS campos juntos; emprestar só a
  *     string do modelo é o defeito do PR #151, e ele voltou por este degrau
@@ -202,23 +201,7 @@ export function decidirBinding(entrada: EntradaDaDecisao): DecisaoDeBinding {
     };
   }
 
-  // 3 · Fallback auxiliar herdado da versão publicada. `auxModelArgs` só
-  // entrega este override quando NÃO há knob específico do ponto; por isso o
-  // ramo pode ficar depois do binding e antes do padrão sem roubar uma escolha
-  // explícita. Os três campos viajam juntos — separar qualquer um recria a
-  // combinação impossível observada em produção (OpenAI + modelo Claude).
-  if (entrada.agentePublicado?.model !== undefined) {
-    return {
-      provider: entrada.agentePublicado.provider,
-      modelId: entrada.agentePublicado.model,
-      credentialId: entrada.agentePublicado.credentialId,
-      baseUrl: null,
-      origem: "agente_publicado",
-      avisos,
-    };
-  }
-
-  // 4 · O knob de ambiente. Herda provider/credencial do padrão da org, que é
+  // 3 · O knob de ambiente. Herda provider/credencial do padrão da org, que é
   // exatamente o que esse knob sempre pressupôs — ele nasceu quando só havia
   // um provider por instalação.
   if (entrada.modeloDeAmbiente !== undefined) {
@@ -258,7 +241,7 @@ export function decidirBinding(entrada: EntradaDaDecisao): DecisaoDeBinding {
     };
   }
 
-  // 5 · O padrão da organização.
+  // 4 · O padrão da organização.
   return {
     provider: entrada.padraoDaOrganizacao.provider,
     modelId: entrada.padraoDaOrganizacao.defaultModel,

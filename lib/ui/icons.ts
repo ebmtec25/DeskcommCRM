@@ -61,6 +61,7 @@ export {
   Globe,
   ArrowSquareOut,
   Tray,
+  IdentificationCard,
   // feedback
   CheckCircle,
   Warning,

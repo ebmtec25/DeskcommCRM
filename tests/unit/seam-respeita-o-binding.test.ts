@@ -148,7 +148,7 @@ describe("o seam usa o modelo que o painel escolheu", () => {
       llmOverride: { provider: "openai", credentialId: null },
     });
     expect(chamadas[0]).toMatchObject({ provider: "openai", modelId: "gpt-5-mini" });
-    expect(resultado.origem).toBe("agente_publicado");
+    expect(resultado.origem).toBe("herdado_de_quem_chamou");
   });
 
   it("binding explícito continua vencendo o fallback herdado do agente", async () => {
