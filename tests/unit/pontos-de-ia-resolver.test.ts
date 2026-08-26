@@ -94,6 +94,20 @@ describe("precedência entre origens", () => {
     expect(d.provider).toBe("openrouter");
   });
 
+  it("sem binding, ponto auxiliar herda modelo, provider e credencial do agente publicado", () => {
+    // É o caminho real dos classificadores quando o knob específico não está
+    // definido: `auxModelArgs` entrega o agente como fallback. Perder esse
+    // fallback aqui mistura o provider do override com o modelo padrão da org
+    // (ex.: OpenAI + Claude) e o turno morre antes de responder.
+    const d = decidirBinding(entrada({ agentePublicado: agente() }));
+    expect(d).toMatchObject({
+      origem: "agente_publicado",
+      provider: "openai",
+      credentialId: "cred-openai",
+      modelId: "gpt-5-mini",
+    });
+  });
+
   it("binding desligado devolve o lugar para quem vem depois", () => {
     const d = decidirBinding(
       entrada({
