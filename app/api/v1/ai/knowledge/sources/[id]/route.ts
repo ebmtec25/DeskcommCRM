@@ -1,8 +1,10 @@
 /**
+ * GET    /api/v1/ai/knowledge/sources/[id]  — read one source + its content
  * PATCH  /api/v1/ai/knowledge/sources/[id]  — update knowledge source
  * DELETE /api/v1/ai/knowledge/sources/[id]  — soft-delete (status='archived')
  *
- * Auth: cookie session. Role >= manager required.
+ * Auth: cookie session. GET só exige sessão (mesmo padrão do GET de listagem);
+ * PATCH/DELETE exigem role >= manager.
  * organization_id is ALWAYS resolved from the authenticated session — never from body/path.
  */
 
@@ -10,9 +12,11 @@ import { randomUUID } from "node:crypto";
 import { type NextRequest } from "next/server";
 import { z } from "zod";
 import { ok, fail } from "@/lib/api/wrappers";
+import { loadAuthUser, resolveActiveOrg } from "@/lib/auth/server";
 import { requireRole } from "@/lib/auth/require-role";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { parseFaqMarkdown, toFaqMarkdown } from "@/lib/ai/rag/ingest/faq";
 
 export const dynamic = "force-dynamic";
 
@@ -30,8 +34,73 @@ const faqItemSchema = z.object({
 const patchSourceSchema = z.object({
   name: z.string().min(2).max(120).optional(),
   items: z.array(faqItemSchema).optional(),
+  // Mesmo atalho que o POST de criação já oferece: cola o markdown, o servidor
+  // parseia. Sem isto a tela de edição teria que reimplementar o parser no
+  // cliente pra mandar `items` estruturado — a mesma regra em dois lugares.
+  markdown_blob: z.string().optional(),
   source_metadata: z.record(z.string(), z.unknown()).optional(),
 });
+
+// ---------------------------------------------------------------------------
+// GET — read one source, with content pra pré-preencher a edição
+// ---------------------------------------------------------------------------
+
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+): Promise<Response> {
+  const requestId = randomUUID();
+  const { id: sourceId } = await params;
+
+  const authUser = await loadAuthUser();
+  if (!authUser) {
+    return fail("unauthenticated", "Auth required.", 401, { requestId });
+  }
+  const activeOrg = await resolveActiveOrg(authUser);
+  if (!activeOrg) {
+    return fail("forbidden", "Nenhuma organização ativa.", 403, { requestId });
+  }
+
+  const supabase = await createClient();
+  const { data: source, error: srcErr } = await supabase
+    .from("ai_knowledge_sources")
+    .select("id, agent_id, source_type, name")
+    .eq("id", sourceId)
+    .eq("organization_id", activeOrg.orgId)
+    .maybeSingle();
+
+  if (srcErr) {
+    console.error("[ai-knowledge-sources] GET one failed:", srcErr.message);
+    return fail("internal_error", "Erro ao carregar fonte.", 500, { requestId });
+  }
+  if (!source) {
+    return fail("not_found", "Fonte de conhecimento não encontrada.", 404, { requestId });
+  }
+
+  const src = source as { id: string; agent_id: string; source_type: string; name: string };
+
+  // Só faq/policy têm conteúdo colado pra devolver — catalog/conversations são
+  // preenchidos por pipeline (ver NovaFonteDialog) e não têm markdown nenhum.
+  let markdownBlob = "";
+  if (src.source_type === "faq" || src.source_type === "policy") {
+    const { data: items, error: itemsErr } = await supabase
+      .from("ai_faq_items")
+      .select("question, answer")
+      .eq("knowledge_source_id", sourceId)
+      .order("position", { ascending: true });
+
+    if (itemsErr) {
+      console.error("[ai-knowledge-sources] GET one items failed:", itemsErr.message);
+      return fail("internal_error", "Erro ao carregar conteúdo da fonte.", 500, { requestId });
+    }
+    markdownBlob = toFaqMarkdown((items ?? []) as Array<{ question: string; answer: string }>);
+  }
+
+  return ok(
+    { id: src.id, agent_id: src.agent_id, source_type: src.source_type, name: src.name, markdown_blob: markdownBlob },
+    { requestId },
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Shared: resolve auth + role gate
@@ -115,9 +184,29 @@ export async function PATCH(
     }
   }
 
-  // Replace FAQ items if provided.
+  // Replace FAQ items if provided — vale para 'faq' E 'policy' (mesmo ajuste do
+  // POST de criação: os dois tipos guardam pergunta/resposta na mesma tabela;
+  // filtrar só por 'faq' aqui aceitava edição de política e descartava em
+  // silêncio). `markdown_blob` é o atalho que a tela de edição usa — mesmo
+  // parser do cadastro, pra não duplicar a regra em dois lugares.
+  const tipoTemConteudoColado = ksRow.source_type === "faq" || ksRow.source_type === "policy";
+  let itemsParaGravar: Array<{ question: string; answer: string; tags: string[]; locale: string }> | undefined;
+  if (input.items !== undefined) {
+    itemsParaGravar = input.items;
+  } else if (input.markdown_blob !== undefined && tipoTemConteudoColado) {
+    itemsParaGravar = parseFaqMarkdown(input.markdown_blob);
+    if (itemsParaGravar.length === 0) {
+      return fail(
+        "invalid_request",
+        "markdown_blob não contém itens válidos. Use seções ## Pergunta: / ## Resposta:.",
+        400,
+        { requestId },
+      );
+    }
+  }
+
   let itemsCount: number | undefined;
-  if (input.items !== undefined && ksRow.source_type === "faq") {
+  if (itemsParaGravar !== undefined && tipoTemConteudoColado) {
     // Delete existing items.
     const { error: delErr } = await admin
       .from("ai_faq_items")
@@ -130,8 +219,8 @@ export async function PATCH(
       return fail("internal_error", "Erro ao remover itens antigos.", 500, { requestId });
     }
 
-    if (input.items.length > 0) {
-      const rows = input.items.map((item, idx) => ({
+    if (itemsParaGravar.length > 0) {
+      const rows = itemsParaGravar.map((item, idx) => ({
         organization_id: activeOrg.orgId,
         knowledge_source_id: sourceId,
         question: item.question,

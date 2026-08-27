@@ -6,6 +6,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/componen
 import { Button } from "@/components/ui/button";
 import { SourceStatusBadge, deriveBadgeStatus } from "@/components/ai/SourceStatusBadge";
 import { NovaFonteDialog } from "@/components/ai/NovaFonteDialog";
+import { EditarConteudoDialog } from "@/components/ai/EditarConteudoDialog";
 import type { SourceRow } from "@/hooks/ai/useKnowledgeSources";
 
 export type KnowledgeSourceType = "faq" | "policy" | "conversations" | "catalog";
@@ -84,6 +85,7 @@ export function KnowledgeSourceCard({
   source, type, onReindex, isReindexing, agentId, onCriada,
 }: Props) {
   const [novaAberta, setNovaAberta] = useState(false);
+  const [editarAberta, setEditarAberta] = useState(false);
   const meta = TYPE_META[type];
   const Icon = meta.Icon;
 
@@ -138,11 +140,7 @@ export function KnowledgeSourceCard({
   const extraButton = (() => {
     if (type === "faq") {
       return (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => toast.info("Editor de FAQ em breve.")}
-        >
+        <Button variant="ghost" size="sm" onClick={() => setEditarAberta(true)}>
           Editar conteúdo
         </Button>
       );
@@ -201,6 +199,15 @@ export function KnowledgeSourceCard({
         </Button>
         {extraButton}
       </CardFooter>
+      {type === "faq" ? (
+        <EditarConteudoDialog
+          sourceId={source.id}
+          rotulo={meta.label}
+          aberto={editarAberta}
+          onFechar={() => setEditarAberta(false)}
+          onSalvo={() => onCriada?.()}
+        />
+      ) : null}
     </Card>
   );
 }

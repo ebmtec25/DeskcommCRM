@@ -139,3 +139,14 @@ export function formatFaqChunk(item: FaqItem): string {
   const tagsStr = item.tags.length > 0 ? item.tags.join(", ") : "";
   return `Pergunta: ${item.question}\nResposta: ${item.answer}${tagsStr ? `\nTags: ${tagsStr}` : ""}`;
 }
+
+/**
+ * Inverso de `parseFaqMarkdown` — reconstrói o mesmo formato `## Pergunta:` /
+ * `## Resposta:` a partir dos itens já gravados, pra pré-preencher a tela de
+ * edição com o texto que a pessoa colou originalmente (ou o mais perto disso:
+ * tags/locale por item não voltam pro frontmatter, o editor é global por
+ * fonte, igual o de criação).
+ */
+export function toFaqMarkdown(items: Array<{ question: string; answer: string }>): string {
+  return items.map((it) => `## Pergunta: ${it.question}\n## Resposta: ${it.answer}`).join("\n\n");
+}
