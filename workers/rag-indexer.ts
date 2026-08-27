@@ -47,18 +47,28 @@ function skip(reason: string): SkipResult {
 }
 
 /**
- * Loads the default active agent for the org.
+ * Loads the default non-archived agent for the org.
  * Returns null when no agent is configured.
+ *
+ * `is_active` NÃO entra no filtro — é semântica legada do `kind='rag_bot'` (ver
+ * `agent-config.ts`: "para mcp_agent 'ativo' = published_version_id preenchido
+ * + não arquivado"). Todo agente em produção hoje é `mcp_agent`, e um agente
+ * arquivado pode carregar `is_active=true` como resíduo de antes do archive —
+ * medido em produção: um agente "cópia" arquivado em 22/08 ainda tinha
+ * `is_active=true`, então este resolver escolhia ELE (por `is_active`) em vez
+ * do agente default de verdade (`is_active=false`, mas não arquivado e com
+ * versão publicada) — a base de conhecimento do agente real nunca era
+ * encontrada, e a reindexação pulava com "no_sources" sem erro nenhum.
  */
-async function resolveAgent(
+export async function resolveAgent(
   organizationId: string,
 ): Promise<{ id: string; active_kb_version_id: string | null } | null> {
   const admin = createAdminClient();
   const { data } = await admin
     .from("ai_agents")
-    .select("id, organization_id, active_kb_version_id, is_active, is_default")
+    .select("id, organization_id, active_kb_version_id, archived_at, is_default")
     .eq("organization_id", organizationId)
-    .eq("is_active", true)
+    .is("archived_at", null)
     .order("is_default", { ascending: false })
     .order("created_at", { ascending: true })
     .limit(1)
