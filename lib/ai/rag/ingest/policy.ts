@@ -81,13 +81,14 @@ export interface IngestPolicyArgs {
 }
 
 export interface IngestPolicyResult {
-  chunkCount: number;
+  chunks: string[];
 }
 
 /**
  * Downloads a policy file from Supabase Storage, extracts text, and chunks it.
- * Returns the chunk count — actual embedding is handled by the rag-indexer
- * worker that listens to knowledge_source.updated events.
+ * Returns the chunks themselves — the caller embeds and persists them (the
+ * upload endpoint uses this only to validate extraction; the rag-indexer
+ * worker uses it to actually index the file into ai_chunks).
  *
  * Throws `PdfExtractError` if PDF extraction fails.
  */
@@ -122,5 +123,5 @@ export async function ingestPolicyFile(args: IngestPolicyArgs): Promise<IngestPo
     `[ai-policy-upload] ingestPolicyFile: ks=${knowledgeSourceId} ext=${ext} chunks=${chunks.length}`,
   );
 
-  return { chunkCount: chunks.length };
+  return { chunks };
 }

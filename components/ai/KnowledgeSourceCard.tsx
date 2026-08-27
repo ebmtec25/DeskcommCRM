@@ -1,12 +1,12 @@
 "use client";
 import { useState } from "react";
-import { HelpCircle, ShieldCheck, MessageSquare, Package, RefreshCw } from "lucide-react";
-import { toast } from "sonner";
+import { HelpCircle, FileText, MessageSquare, Package, RefreshCw } from "lucide-react";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { SourceStatusBadge, deriveBadgeStatus } from "@/components/ai/SourceStatusBadge";
 import { NovaFonteDialog } from "@/components/ai/NovaFonteDialog";
 import { EditarConteudoDialog } from "@/components/ai/EditarConteudoDialog";
+import { DocumentosDialog } from "@/components/ai/DocumentosDialog";
 import type { SourceRow } from "@/hooks/ai/useKnowledgeSources";
 
 export type KnowledgeSourceType = "faq" | "policy" | "conversations" | "catalog";
@@ -45,9 +45,9 @@ const TYPE_META: Record<
     comoSePreenche: null,
   },
   policy: {
-    label: "Política",
-    Icon: ShieldCheck,
-    description: "Documento PDF de políticas (troca, devolução, privacidade).",
+    label: "Documentos",
+    Icon: FileText,
+    description: "Arquivos PDF ou Markdown — políticas, manuais, catálogos. O agente consulta antes de responder.",
     comoSePreenche: null,
   },
   conversations: {
@@ -86,15 +86,17 @@ export function KnowledgeSourceCard({
 }: Props) {
   const [novaAberta, setNovaAberta] = useState(false);
   const [editarAberta, setEditarAberta] = useState(false);
+  const [documentosAberta, setDocumentosAberta] = useState(false);
   const meta = TYPE_META[type];
   const Icon = meta.Icon;
 
   // Empty state.
   if (!source) {
-    // Sem `agentId` o diálogo nem era montado e o botão abria coisa nenhuma —
-    // controle decorativo. Só oferece cadastro quem tem os dois: tipo que
-    // aceita texto colado e agente para amarrar a fonte.
-    const cadastroManual = (type === "faq" || type === "policy") && !!agentId;
+    // Colar texto só faz sentido pra FAQ. `policy` virou biblioteca de
+    // arquivo — os dois caminhos concorrendo pro mesmo card confundiria mais
+    // do que ajudaria, então aqui só sobra o de upload.
+    const cadastroManual = type === "faq" && !!agentId;
+    const bibliotecaDeArquivos = type === "policy" && !!agentId;
     return (
       <Card className="flex h-full flex-col">
         <CardHeader>
@@ -128,6 +130,21 @@ export function KnowledgeSourceCard({
               />
             </>
           ) : null}
+          {bibliotecaDeArquivos ? (
+            <>
+              <Button variant="secondary" size="sm" onClick={() => setDocumentosAberta(true)}>
+                Adicionar documentos
+              </Button>
+              <DocumentosDialog
+                agentId={agentId as string}
+                sourceId={null}
+                rotulo={meta.label}
+                aberto={documentosAberta}
+                onFechar={() => setDocumentosAberta(false)}
+                onSalvo={() => onCriada?.()}
+              />
+            </>
+          ) : null}
         </CardFooter>
       </Card>
     );
@@ -147,12 +164,8 @@ export function KnowledgeSourceCard({
     }
     if (type === "policy") {
       return (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => toast.info("Upload de política em breve.")}
-        >
-          Upload novo arquivo
+        <Button variant="ghost" size="sm" onClick={() => setDocumentosAberta(true)}>
+          Gerenciar documentos
         </Button>
       );
     }
@@ -205,6 +218,16 @@ export function KnowledgeSourceCard({
           rotulo={meta.label}
           aberto={editarAberta}
           onFechar={() => setEditarAberta(false)}
+          onSalvo={() => onCriada?.()}
+        />
+      ) : null}
+      {type === "policy" ? (
+        <DocumentosDialog
+          agentId={agentId as string}
+          sourceId={source.id}
+          rotulo={meta.label}
+          aberto={documentosAberta}
+          onFechar={() => setDocumentosAberta(false)}
           onSalvo={() => onCriada?.()}
         />
       ) : null}

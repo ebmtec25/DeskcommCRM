@@ -96,8 +96,41 @@ export async function GET(
     markdownBlob = toFaqMarkdown((items ?? []) as Array<{ question: string; answer: string }>);
   }
 
+  // Biblioteca de documentos: só 'policy' tem arquivos — a lista que o
+  // DocumentosDialog usa pra mostrar o que já foi enviado.
+  let files: Array<{
+    id: string;
+    filename: string;
+    size_bytes: number;
+    ext: string;
+    status: string;
+    error: string | null;
+    chunk_count: number;
+    created_at: string;
+  }> = [];
+  if (src.source_type === "policy") {
+    const { data: fileRows, error: filesErr } = await supabase
+      .from("ai_document_files")
+      .select("id, filename, size_bytes, ext, status, error, chunk_count, created_at")
+      .eq("knowledge_source_id", sourceId)
+      .order("created_at", { ascending: false });
+
+    if (filesErr) {
+      console.error("[ai-knowledge-sources] GET one files failed:", filesErr.message);
+      return fail("internal_error", "Erro ao carregar arquivos da fonte.", 500, { requestId });
+    }
+    files = fileRows ?? [];
+  }
+
   return ok(
-    { id: src.id, agent_id: src.agent_id, source_type: src.source_type, name: src.name, markdown_blob: markdownBlob },
+    {
+      id: src.id,
+      agent_id: src.agent_id,
+      source_type: src.source_type,
+      name: src.name,
+      markdown_blob: markdownBlob,
+      files,
+    },
     { requestId },
   );
 }

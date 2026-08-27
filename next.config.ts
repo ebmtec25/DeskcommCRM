@@ -32,7 +32,37 @@ const nextConfig: NextConfig = {
    * sem exigir que alguém lembre de editar esta linha.
    */
   outputFileTracingIncludes: {
-    "/**": ["./node_modules/.pnpm/@swc+helpers@*/node_modules/@swc/helpers/**"],
+    "/**": [
+      "./node_modules/.pnpm/@swc+helpers@*/node_modules/@swc/helpers/**",
+      // Mesmo buraco do @swc/helpers acima, achado ao testar o upload de
+      // documento pela tela (migration 0176): pdfjs-dist tenta carregar
+      // @napi-rs/canvas (optionalDependency dele) pra polyfill de DOMMatrix
+      // e Path2D em Node. O trace não segue esse require -- ele e
+      // condicional, dentro de um try/catch da propria lib -- e a build
+      // standalone saia SEM o pacote. Sem DOMMatrix, getTextContent() do
+      // pdfjs devolve ZERO itens de texto pra um PDF valido e legivel:
+      // nenhum crash, nenhum erro no log, so a extracao "funcionando" e
+      // voltando vazia -- o endpoint de upload interpreta como "PDF so
+      // imagem" (422) e mente sobre a causa. Medido rodando .next/standalone
+      // de verdade (nao next dev): "Warning: Cannot load @napi-rs/canvas
+      // package" no boot, silencioso depois disso.
+      //
+      // Os dois bindings nativos entram porque a imagem roda node:22-alpine
+      // (musl), mas o binding correto depende de onde a imagem e montada; o
+      // glob cobre -gnu e -musl pra nao depender de qual e a libc do
+      // runtime que buildou.
+      //
+      // As duas primeiras linhas sozinhas NAO bastam: copiam o pacote real,
+      // mas quem o pdfjs-dist de fato pede e o SYMLINK que o pnpm cria
+      // dentro do node_modules PRIVADO dele (dentro de
+      // .pnpm/pdfjs-dist@.../node_modules/@napi-rs/), e esse link nao vem
+      // junto -- sem a terceira linha o resolvedor do Node segue o
+      // require("@napi-rs/canvas") ate um caminho que nao existe no
+      // standalone, mesmo com o pacote real presente em outro lugar.
+      "./node_modules/.pnpm/@napi-rs+canvas@*/node_modules/@napi-rs/canvas/**",
+      "./node_modules/.pnpm/@napi-rs+canvas@*/node_modules/@napi-rs/canvas-linux-x64-*/**",
+      "./node_modules/.pnpm/pdfjs-dist@*/node_modules/@napi-rs/canvas/**",
+    ],
   },
   reactStrictMode: true,
   poweredByHeader: false,

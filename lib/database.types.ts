@@ -685,6 +685,72 @@ export type Database = {
           },
         ]
       }
+      ai_document_files: {
+        Row: {
+          blob_path: string
+          chunk_count: number
+          created_at: string
+          error: string | null
+          ext: string
+          filename: string
+          id: string
+          knowledge_source_id: string
+          mime_type: string
+          organization_id: string
+          size_bytes: number
+          status: string
+          updated_at: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          blob_path: string
+          chunk_count?: number
+          created_at?: string
+          error?: string | null
+          ext: string
+          filename: string
+          id?: string
+          knowledge_source_id: string
+          mime_type: string
+          organization_id: string
+          size_bytes: number
+          status?: string
+          updated_at?: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          blob_path?: string
+          chunk_count?: number
+          created_at?: string
+          error?: string | null
+          ext?: string
+          filename?: string
+          id?: string
+          knowledge_source_id?: string
+          mime_type?: string
+          organization_id?: string
+          size_bytes?: number
+          status?: string
+          updated_at?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_document_files_knowledge_source_id_fkey"
+            columns: ["knowledge_source_id"]
+            isOneToOne: false
+            referencedRelation: "ai_knowledge_sources"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_document_files_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ai_faq_items: {
         Row: {
           answer: string

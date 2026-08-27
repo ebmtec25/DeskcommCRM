@@ -46,6 +46,13 @@ export async function extractPdfText(buffer: Buffer): Promise<string> {
     // Em Node o pdf.js já se auto-configura; as três linhas sobrescreviam justamente
     // o que a lib tinha preparado. Medido nas versões 4.10.38 e 6.2.108: com
     // `workerSrc = ""` falha nas duas; sem tocar, extrai nas duas.
+    //
+    // Rodando dentro de uma Route Handler bundlada pelo Turbopack, o "fake
+    // worker" que o pdf.js usa em Node ainda precisa importar
+    // `pdf.worker.mjs` como um arquivo ao lado do chunk bundlado — não algo
+    // que `workerSrc` resolva (medido: nem `import.meta.resolve` ajuda, o
+    // bundler reescreve o caminho do mesmo jeito). Quem garante esse arquivo
+    // no lugar certo do `.next/standalone` é `scripts/postbuild-canvas-standalone.mjs`.
     const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(buffer) });
     const pdfDocument = await loadingTask.promise;
 

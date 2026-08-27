@@ -14,6 +14,7 @@ import { isEmbeddingProviderConfigured } from "@/lib/ai/gateway";
 import { embedText } from "@/lib/ai/embed";
 import { acquireDebounce } from "@/lib/ai/rag/debounce";
 import { chunkText, computeContentHash } from "@/lib/ai/rag/chunker";
+import { ingestPolicyFile } from "@/lib/ai/rag/ingest/policy";
 import { estimateTokens } from "@/lib/ai/runtime/history";
 import { formatProductForRag, type NuvemshopProduct } from "@/lib/ai/rag/format-product";
 import {
@@ -332,13 +333,36 @@ async function handleKnowledgeSourceUpdated(
     question: string;
     answer: string;
   }[];
-  if (items.length === 0) return skip("no_content_to_index");
+
+  // Biblioteca de documentos: arquivos prontos (não os já marcados 'failed'
+  // numa reindexação anterior) das mesmas fontes.
+  const { data: fileRows, error: fileQueryErr } = await admin
+    .from("ai_document_files")
+    .select("id, knowledge_source_id, filename, blob_path, ext")
+    .eq("organization_id", row.organization_id)
+    .in("knowledge_source_id", sources.map((s) => s.id))
+    .eq("status", "ready");
+  if (fileQueryErr) return { type: "error", detail: `files_query_failed: ${fileQueryErr.message}` };
+
+  const files = (fileRows ?? []) as {
+    id: string;
+    knowledge_source_id: string;
+    filename: string;
+    blob_path: string;
+    ext: string;
+  }[];
 
   // Um chunk por par pergunta/resposta: a unidade de recuperação é a resposta
   // inteira. `chunkText` só entra quando a resposta é longa demais para um
   // chunk — assim uma FAQ curta nunca é picada no meio.
   const porFonte = new Map(sources.map((s) => [s.id, s]));
-  const pedacos: { content: string; sourceId: string; sourceType: string }[] = [];
+  const pedacos: {
+    content: string;
+    sourceId: string;
+    sourceType: string;
+    fileId?: string;
+    filename?: string;
+  }[] = [];
   for (const it of items) {
     const fonte = porFonte.get(it.knowledge_source_id);
     if (!fonte) continue;
@@ -347,6 +371,44 @@ async function handleKnowledgeSourceUpdated(
       pedacos.push({ content: c, sourceId: fonte.id, sourceType: fonte.source_type });
     }
   }
+
+  // Arquivos entram um de cada vez, e um arquivo ruim NÃO aborta os demais
+  // (nem o FAQ) — diferente de falha de embed (infra, aborta tudo abaixo),
+  // extração ruim é esperado acontecer por arquivo malformado e é isolada por
+  // arquivo: marca `ai_document_files.status='failed'` e segue.
+  const arquivosExtraidos = new Set<string>();
+  for (const f of files) {
+    const fonte = porFonte.get(f.knowledge_source_id);
+    if (!fonte) continue;
+    try {
+      const { chunks } = await ingestPolicyFile({
+        organizationId: row.organization_id,
+        agentId,
+        knowledgeSourceId: f.knowledge_source_id,
+        blobPath: f.blob_path,
+        ext: f.ext as "pdf" | "md",
+      });
+      arquivosExtraidos.add(f.id);
+      for (const c of chunks) {
+        pedacos.push({
+          content: c,
+          sourceId: fonte.id,
+          sourceType: fonte.source_type,
+          fileId: f.id,
+          filename: f.filename,
+        });
+      }
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      console.warn(`[rag-indexer] extração falhou para o arquivo ${f.id} (${f.filename}):`, detail);
+      await admin
+        .from("ai_document_files")
+        .update({ status: "failed", error: detail })
+        .eq("id", f.id)
+        .eq("organization_id", row.organization_id);
+    }
+  }
+
   if (pedacos.length === 0) return skip("no_chunks_generated");
 
   const { versionId, versionNumber } = await createKnowledgeVersion({
@@ -361,6 +423,7 @@ async function handleKnowledgeSourceUpdated(
 
   let gravados = 0;
   const gravadosPorFonte = new Map<string, number>();
+  const gravadosPorArquivo = new Map<string, number>();
   for (let i = 0; i < pedacos.length; i++) {
     const p = pedacos[i]!;
     const contentHash = computeContentHash(p.content);
@@ -383,7 +446,10 @@ async function handleKnowledgeSourceUpdated(
         content_hash: contentHash,
         token_count: estimateTokens(p.content),
         embedding: embedding as unknown as string,
-        metadata: { source_type: p.sourceType },
+        metadata: {
+          source_type: p.sourceType,
+          ...(p.fileId ? { file_id: p.fileId, filename: p.filename } : {}),
+        },
       },
       // Ver comentario no caminho de produto: esta e a constraint que existe.
       { onConflict: "knowledge_source_id,kb_version_id,position", ignoreDuplicates: true },
@@ -393,6 +459,9 @@ async function handleKnowledgeSourceUpdated(
     } else {
       gravados++;
       gravadosPorFonte.set(p.sourceId, (gravadosPorFonte.get(p.sourceId) ?? 0) + 1);
+      if (p.fileId) {
+        gravadosPorArquivo.set(p.fileId, (gravadosPorArquivo.get(p.fileId) ?? 0) + 1);
+      }
     }
   }
 
@@ -423,6 +492,21 @@ async function handleKnowledgeSourceUpdated(
         chunks_count: doFonte,
       })
       .eq("id", s.id)
+      .eq("organization_id", row.organization_id);
+  }
+
+  // Estado por arquivo: mesma lógica, granularidade menor — a lista de
+  // documentos mostra quantos chunks CADA arquivo contribuiu.
+  for (const fileId of arquivosExtraidos) {
+    const doArquivo = gravadosPorArquivo.get(fileId) ?? 0;
+    await admin
+      .from("ai_document_files")
+      .update({
+        status: doArquivo > 0 ? "ready" : "failed",
+        error: doArquivo > 0 ? null : "nenhum chunk foi gravado nesta indexação",
+        chunk_count: doArquivo,
+      })
+      .eq("id", fileId)
       .eq("organization_id", row.organization_id);
   }
 

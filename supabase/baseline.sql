@@ -14323,3 +14323,67 @@ comment on column public.automation_rule_runs.status is
   'número, ou a mensagem ficou na fila do canal.';
 
 notify pgrst, 'reload schema';
+
+-- ---- biblioteca de documentos: ai_document_files (migration 0176) ----
+--
+-- O card "Política" já tinha upload de arquivo funcionando de ponta a ponta
+-- no backend, mas tratava UM arquivo como A fonte inteira (substituir, não
+-- acrescentar), e o botão do frontend nunca foi ligado. O pedido foi uma
+-- BIBLIOTECA: vários arquivos acumulados sob a mesma fonte
+-- (`ai_knowledge_sources.source_type = 'policy'`), cada um listado e
+-- removido individualmente. Tabela filha 1:N, mesmo padrão de `ai_faq_items`
+-- — mas para arquivo binário com blob no Storage, extração que pode falhar
+-- DEPOIS do upload (na reindexação assíncrona), e contagem de chunks por
+-- unidade de upload. Sem `unique(knowledge_source_id, filename)` de
+-- propósito: nomes duplicados são caso normal numa biblioteca.
+
+create table if not exists public.ai_document_files (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  knowledge_source_id uuid not null references public.ai_knowledge_sources(id) on delete cascade,
+
+  filename text not null,
+  blob_path text not null,
+  ext text not null check (ext in ('pdf', 'md')),
+  mime_type text not null,
+  size_bytes integer not null,
+
+  status text not null default 'ready' check (status in ('ready', 'failed')),
+  error text,
+  chunk_count integer not null default 0,
+
+  uploaded_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists ai_document_files_source_idx
+  on public.ai_document_files (knowledge_source_id, created_at desc);
+
+create index if not exists ai_document_files_org_idx
+  on public.ai_document_files (organization_id);
+
+comment on table public.ai_document_files is
+  'Biblioteca de arquivos (PDF/Markdown) que compõem UMA fonte ai_knowledge_sources tipo policy. '
+  'Upload acrescenta; remoção individual apaga a linha + o blob e reindexa sem aquele arquivo.';
+comment on column public.ai_document_files.status is
+  'ready = extraído/chunkado com sucesso na validação de upload; failed = a reindexação não '
+  'conseguiu ler este arquivo depois (blob sumiu, PDF corrompido). error carrega o motivo.';
+
+alter table public.ai_document_files enable row level security;
+
+-- Só SELECT: toda escrita passa pelo admin client nos endpoints (bypassa RLS,
+-- filtra organization_id manualmente) — ver o comentário completo na
+-- migration 0176.
+drop policy if exists "tenant_isolation_ai_document_files_all" on public.ai_document_files;
+drop policy if exists "tenant_isolation_ai_document_files_select" on public.ai_document_files;
+create policy "tenant_isolation_ai_document_files_select" on public.ai_document_files
+  for select
+  using (organization_id in (select public.fn_user_org_ids()));
+
+drop trigger if exists trg_ai_document_files_updated_at on public.ai_document_files;
+create trigger trg_ai_document_files_updated_at
+  before update on public.ai_document_files
+  for each row execute function public.fn_set_updated_at();
+
+notify pgrst, 'reload schema';

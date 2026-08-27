@@ -150,7 +150,7 @@ export async function POST(req: NextRequest): Promise<Response> {
       blobPath,
       ext,
     });
-    chunkCount = result.chunkCount;
+    chunkCount = result.chunks.length;
   } catch (err) {
     // Cleanup uploaded blob
     await admin.storage.from("ai-policy").remove([blobPath]);
@@ -167,39 +167,92 @@ export async function POST(req: NextRequest): Promise<Response> {
     return fail("internal_error", "Erro ao processar o arquivo.", 500, { requestId });
   }
 
-  // --- Insert ai_knowledge_sources ---
-  const sourceMetadata = {
-    filename: file.name,
-    blob_path: blobPath,
-    version: 1,
-    uploaded_by: authUser.id,
-    mime_type: mimeType,
-    size_bytes: file.size,
-    chunk_count: chunkCount,
-  };
-
-  const { data: ks, error: ksErr } = await admin
+  // --- Resolve (or create) the agent's single "policy" source ---
+  // Biblioteca de documentos: um upload ACRESCENTA a esta fonte, não a
+  // substitui — a fonte em si só é criada uma vez, na primeira vez que o
+  // agente recebe um arquivo.
+  const { data: existingKs, error: existingKsErr } = await admin
     .from("ai_knowledge_sources")
+    .select("id")
+    .eq("organization_id", activeOrg.orgId)
+    .eq("agent_id", agentId)
+    .eq("source_type", "policy")
+    .eq("is_active", true)
+    .maybeSingle();
+
+  if (existingKsErr) {
+    await admin.storage.from("ai-policy").remove([blobPath]);
+    console.error("[ai-policy-upload] source lookup failed:", existingKsErr.message);
+    return fail("internal_error", "Erro ao localizar fonte de conhecimento.", 500, { requestId });
+  }
+
+  let ksId: string;
+  if (existingKs) {
+    ksId = (existingKs as { id: string }).id;
+  } else {
+    const { data: createdKs, error: createErr } = await admin
+      .from("ai_knowledge_sources")
+      .insert({
+        organization_id: activeOrg.orgId,
+        agent_id: agentId,
+        source_type: "policy",
+        name,
+        status: "ready",
+        ingested_at: new Date().toISOString(),
+      })
+      .select("id")
+      .single();
+
+    if (createErr?.code === "23505") {
+      // Corrida: dois primeiros uploads simultâneos. Reconsulta em vez de
+      // falhar — o upload não deveria morrer por essa disputa de milissegundos.
+      const { data: raced } = await admin
+        .from("ai_knowledge_sources")
+        .select("id")
+        .eq("organization_id", activeOrg.orgId)
+        .eq("agent_id", agentId)
+        .eq("source_type", "policy")
+        .eq("is_active", true)
+        .single();
+      if (!raced) {
+        await admin.storage.from("ai-policy").remove([blobPath]);
+        return fail("internal_error", "Erro ao registrar fonte de conhecimento.", 500, { requestId });
+      }
+      ksId = (raced as { id: string }).id;
+    } else if (createErr || !createdKs) {
+      await admin.storage.from("ai-policy").remove([blobPath]);
+      console.error("[ai-policy-upload] insert knowledge source failed:", createErr?.message);
+      return fail("internal_error", "Erro ao registrar fonte de conhecimento.", 500, { requestId });
+    } else {
+      ksId = (createdKs as { id: string }).id;
+    }
+  }
+
+  // --- Insert the file into the library ---
+  const { data: fileRow, error: fileErr } = await admin
+    .from("ai_document_files")
     .insert({
       organization_id: activeOrg.orgId,
-      agent_id: agentId,
-      source_type: "policy",
-      name,
+      knowledge_source_id: ksId,
+      filename: file.name,
+      blob_path: blobPath,
+      ext,
+      mime_type: mimeType,
+      size_bytes: file.size,
       status: "ready",
-      ingested_at: new Date().toISOString(),
-      source_metadata: sourceMetadata,
+      chunk_count: chunkCount,
+      uploaded_by: authUser.id,
     })
     .select("id")
     .single();
 
-  if (ksErr || !ks) {
-    // Cleanup blob
+  if (fileErr || !fileRow) {
     await admin.storage.from("ai-policy").remove([blobPath]);
-    console.error("[ai-policy-upload] insert knowledge source failed:", ksErr?.message);
-    return fail("internal_error", "Erro ao registrar fonte de conhecimento.", 500, { requestId });
+    console.error("[ai-policy-upload] insert document file failed:", fileErr?.message);
+    return fail("internal_error", "Erro ao registrar o arquivo.", 500, { requestId });
   }
 
-  const ksId = (ks as { id: string }).id;
+  const fileId = (fileRow as { id: string }).id;
 
   // --- Emit knowledge_source.updated event (fire-and-forget) ---
   const { error: emitErr } = await admin.rpc("emit_event" as never, {
@@ -218,5 +271,8 @@ export async function POST(req: NextRequest): Promise<Response> {
     console.warn("[ai-policy-upload] emit_event failed (non-blocking):", emitErr.message);
   }
 
-  return ok({ id: ksId, blob_path: blobPath }, { status: 201, requestId });
+  return ok(
+    { id: ksId, file_id: fileId, blob_path: blobPath, chunk_count: chunkCount },
+    { status: 201, requestId },
+  );
 }
