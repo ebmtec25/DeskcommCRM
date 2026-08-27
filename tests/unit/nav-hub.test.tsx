@@ -19,16 +19,16 @@ describe("NavHub", () => {
     expect(secoes).toEqual(["Montar o agente", "Ensinar o agente", "Acompanhar o agente"]);
   });
 
-  it("desenterra Conhecimento, que só existia atrás das abas", () => {
+  it("desenterra Memória, que só existia atrás das abas", () => {
     render(<NavHub group="ia" isPlatformAdmin role={null} title="Agente de IA" subtitle="" />);
-    const link = screen.getByRole("link", { name: /Conhecimento/ });
-    expect(link).toHaveAttribute("href", "/app/ai/knowledge/sources");
+    const link = screen.getByRole("link", { name: /Memória/ });
+    expect(link).toHaveAttribute("href", "/app/ai/memory");
   });
 
   it("cada card explica para que serve — é o que o sidebar não cabe dizer", () => {
     render(<NavHub group="ia" isPlatformAdmin role={null} title="Agente de IA" subtitle="" />);
-    const link = screen.getByRole("link", { name: /Conhecimento/ });
-    expect(link.textContent).toMatch(/consulta antes de responder/i);
+    const link = screen.getByRole("link", { name: /Memória/ });
+    expect(link.textContent).toMatch(/já aprendeu sobre a sua operação/i);
   });
 
   it("mostra também o que já está no sidebar — é inventário, não sobra", () => {

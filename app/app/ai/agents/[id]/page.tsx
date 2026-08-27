@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { AgentRow } from "@/hooks/ai/useAgent";
 import type { AgentVersionRow } from "@/hooks/ai/useAgentVersions";
 import type { CredentialRow } from "@/hooks/ai/useCredentials";
+import type { SourceRow } from "@/hooks/ai/useKnowledgeSources";
 
 import { AgentEditorClient } from "./_client";
 import { AgentTabs } from "./_components/AgentTabs";
@@ -79,38 +80,49 @@ export default async function AgentEditorPage({
   }
 
   // mcp_agent: busca versions + lookups.
-  const [versionsRes, credentialsRes, channelSessions, routerMemberRes, funisRes] = await Promise.all([
-    supabase
-      .from("ai_agent_versions")
-      .select(VERSION_COLUMNS)
-      .eq("organization_id", activeOrg.orgId)
-      .eq("agent_id", id)
-      .order("version_number", { ascending: false }),
-    supabase
-      .from("ai_provider_credentials_safe")
-      .select(CREDENTIAL_COLUMNS)
-      .eq("organization_id", activeOrg.orgId),
-    listSelectableChannels(supabase, activeOrg.orgId),
-    supabase
-      .from("ai_router_members")
-      .select("router_id, ai_routers(name)")
-      .eq("organization_id", activeOrg.orgId)
-      .eq("agent_id", id)
-      .limit(1)
-      .maybeSingle(),
-    // Os funis vêm com a página, não por fetch no cliente: a marcação usa
-    // "nenhum funil" para dizer algo importante, e uma lista que chega vazia no
-    // primeiro render diria isso por engano.
-    supabase
-      .from("crm_pipelines")
-      .select("id, name, slug, description, position, is_default")
-      .eq("organization_id", activeOrg.orgId)
-      .eq("is_archived", false)
-      .order("position"),
-  ]);
+  const [versionsRes, credentialsRes, channelSessions, routerMemberRes, funisRes, knowledgeSourcesRes] =
+    await Promise.all([
+      supabase
+        .from("ai_agent_versions")
+        .select(VERSION_COLUMNS)
+        .eq("organization_id", activeOrg.orgId)
+        .eq("agent_id", id)
+        .order("version_number", { ascending: false }),
+      supabase
+        .from("ai_provider_credentials_safe")
+        .select(CREDENTIAL_COLUMNS)
+        .eq("organization_id", activeOrg.orgId),
+      listSelectableChannels(supabase, activeOrg.orgId),
+      supabase
+        .from("ai_router_members")
+        .select("router_id, ai_routers(name)")
+        .eq("organization_id", activeOrg.orgId)
+        .eq("agent_id", id)
+        .limit(1)
+        .maybeSingle(),
+      // Os funis vêm com a página, não por fetch no cliente: a marcação usa
+      // "nenhum funil" para dizer algo importante, e uma lista que chega vazia no
+      // primeiro render diria isso por engano.
+      supabase
+        .from("crm_pipelines")
+        .select("id, name, slug, description, position, is_default")
+        .eq("organization_id", activeOrg.orgId)
+        .eq("is_archived", false)
+        .order("position"),
+      // Fontes de RAG DESTE agente — a aba "Conhecimento" antes vivia numa tela
+      // geral que só enxergava o agente default da org; um agente não-default
+      // nunca conseguia ter (nem gerenciar) a própria base.
+      supabase
+        .from("ai_knowledge_sources")
+        .select("*")
+        .eq("organization_id", activeOrg.orgId)
+        .eq("agent_id", id)
+        .order("created_at", { ascending: true }),
+    ]);
 
   const versions = (versionsRes.data ?? []) as unknown as AgentVersionRow[];
   const funis = (funisRes.data ?? []) as unknown as FunilDaResposta[];
+  const knowledgeSources = (knowledgeSourcesRes.data ?? []) as unknown as SourceRow[];
 
   // Quanto de cada funil o assistente sabe percorrer (spec 17 passo 4). Vem
   // junto com a página porque a lacuna precisa aparecer no MESMO lugar em que o
@@ -158,6 +170,7 @@ export default async function AgentEditorPage({
         funis={funis}
         cobertura={cobertura}
         routerMembership={routerMembership}
+        knowledgeSources={knowledgeSources}
         readOnly={readOnly}
       />
     </div>

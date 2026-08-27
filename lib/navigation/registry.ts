@@ -3,7 +3,6 @@ import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
 import { ROLE_RANK, type Role } from "@/lib/auth/types";
 import {
   Bell,
-  BookOpen,
   Brain,
   Buildings,
   ChartBar,
@@ -263,16 +262,13 @@ export const NAV_DESTINATIONS: NavDestination[] = [
     // duas telas novas à sidebar estourou a dobra em 900px — medido pelo e2e
     // `navegacao.spec.ts`, que existe justamente porque agrupar o menu o faz
     // crescer. Configurar provedor é tarefa de poucas vezes; o caminho é o hub
-    // "Ver tudo em IA", igual a Credenciais, Conhecimento, Memória e Skills.
-  },
-  {
-    href: "/app/ai/knowledge/sources",
-    label: "Conhecimento",
-    description: "Os materiais que o agente consulta antes de responder sobre o seu negócio.",
-    icon: BookOpen,
-    group: "ia",
-    section: "Ensinar o agente",
-    minRole: "manager",
+    // "Ver tudo em IA", igual a Credenciais, Memória e Skills.
+    //
+    // Conhecimento NÃO está mais aqui: virou aba de `/app/ai/agents/[id]`
+    // (`?tab=conhecimento`) porque a base de RAG é por agente
+    // (`ai_knowledge_sources.agent_id`), e um item solto no menu geral só
+    // conseguia mostrar o agente default da org — um agente não-default nunca
+    // tinha como gerenciar a própria base.
   },
   {
     href: "/app/ai/memory",

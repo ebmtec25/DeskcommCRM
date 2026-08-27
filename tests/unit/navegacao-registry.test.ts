@@ -83,8 +83,8 @@ describe("sidebarGroups", () => {
 
   it("só inclui destino marcado como sidebar", () => {
     const hrefs = sidebarGroups(true, null).flatMap((g) => g.items.map((i) => i.href));
-    // Conhecimento existe no registro, mas é do hub — não do sidebar.
-    expect(hrefs).not.toContain("/app/ai/knowledge/sources");
+    // Memória existe no registro, mas é do hub — não do sidebar.
+    expect(hrefs).not.toContain("/app/ai/memory");
     expect(hrefs).toContain("/app/ai/agents");
   });
 
@@ -123,7 +123,7 @@ describe("hubSections", () => {
   it("o hub mostra também o que já está no sidebar — é inventário, não sobra", () => {
     const hrefs = hubSections("ia", true, null).flatMap((s) => s.items.map((i) => i.href));
     expect(hrefs).toContain("/app/ai/agents");
-    expect(hrefs).toContain("/app/ai/knowledge/sources");
+    expect(hrefs).toContain("/app/ai/memory");
   });
 
   it("não vaza destino acima do papel", () => {
@@ -143,7 +143,7 @@ describe("hubSections", () => {
 describe("searchable", () => {
   it("expõe todo destino visível, do sidebar ou não", () => {
     const hrefs = searchable(ADMIN.platform, ADMIN.role).map((d) => d.href);
-    expect(hrefs).toContain("/app/ai/knowledge/sources");
+    expect(hrefs).toContain("/app/ai/memory");
     expect(hrefs).toContain("/app/inbox");
   });
 

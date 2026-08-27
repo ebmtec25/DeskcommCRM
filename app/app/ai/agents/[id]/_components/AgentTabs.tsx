@@ -3,6 +3,7 @@
  * Tabs do detalhe de agent. Wave 12 (S-13.12) entrega Test, Runs e History.
  */
 import * as React from "react";
+import { useSearchParams } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AgentForm, type ChannelSessionLite } from "./AgentForm";
 import type { CoberturaPorFunil } from "./FunisDoAgente";
@@ -12,9 +13,26 @@ import { RunsTable } from "./RunsTable";
 import { UsoDasCapacidades } from "./UsoDasCapacidades";
 import { VersionHistory } from "./VersionHistory";
 import { ProposalsPanel } from "./ProposalsPanel";
+import { KnowledgeSourcesClient } from "@/components/ai/KnowledgeSourcesClient";
 import type { AgentRow } from "@/hooks/ai/useAgent";
 import type { AgentVersionRow } from "@/hooks/ai/useAgentVersions";
 import type { CredentialRow } from "@/hooks/ai/useCredentials";
+import type { SourceRow } from "@/hooks/ai/useKnowledgeSources";
+
+const TAB_VALUES = [
+  "configuration",
+  "test",
+  "capacidades",
+  "conhecimento",
+  "runs",
+  "history",
+  "proposals",
+] as const;
+type TabValue = (typeof TAB_VALUES)[number];
+
+function tabInicial(param: string | null): TabValue {
+  return (TAB_VALUES as readonly string[]).includes(param ?? "") ? (param as TabValue) : "configuration";
+}
 
 interface Props {
   /** Funis da org, para a marcação de escopo do agente (spec 17 passo 3). */
@@ -33,13 +51,18 @@ interface Props {
   provedoresDaInstalacao?: string[];
   channelSessions: ChannelSessionLite[];
   routerMembership?: { routerId: string; routerName: string } | null;
+  /** Fontes de RAG deste agente — ver `docs/runbooks` sobre a migração da tela geral. */
+  knowledgeSources: SourceRow[];
   readOnly?: boolean;
 }
 
 export function AgentTabs(props: Props) {
-  const [tab, setTab] = React.useState<
-    "configuration" | "test" | "capacidades" | "runs" | "history" | "proposals"
-  >("configuration");
+  // `?tab=conhecimento` é o que sustenta o link de compatibilidade da antiga
+  // tela geral `/app/ai/knowledge/sources` (agora um redirect pra cá) e os CTAs
+  // de `EvolutionGaps` — sem isto, o link levaria pro agente mas sempre abriria
+  // em "Configuração", obrigando um segundo clique pra achar o que o link prometia.
+  const searchParams = useSearchParams();
+  const [tab, setTab] = React.useState<TabValue>(() => tabInicial(searchParams.get("tab")));
   const hasVersion = !!(props.draft || props.published);
 
   return (
@@ -54,6 +77,7 @@ export function AgentTabs(props: Props) {
           Teste
         </TabsTrigger>
         <TabsTrigger value="capacidades">Capacidades</TabsTrigger>
+        <TabsTrigger value="conhecimento">Conhecimento</TabsTrigger>
         <TabsTrigger value="runs">Execuções</TabsTrigger>
         <TabsTrigger value="history">Histórico</TabsTrigger>
         <TabsTrigger value="proposals">Propostas</TabsTrigger>
@@ -88,6 +112,10 @@ export function AgentTabs(props: Props) {
 
       <TabsContent value="capacidades" className="m-0">
         <UsoDasCapacidades agentId={props.agent.id} active={tab === "capacidades"} />
+      </TabsContent>
+
+      <TabsContent value="conhecimento" className="m-0">
+        <KnowledgeSourcesClient agentId={props.agent.id} initialSources={props.knowledgeSources} />
       </TabsContent>
 
       <TabsContent value="runs" className="m-0">
