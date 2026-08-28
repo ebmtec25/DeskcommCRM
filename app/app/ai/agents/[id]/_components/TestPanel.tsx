@@ -192,6 +192,16 @@ export function TestPanel({ agent, draft, published, readOnly }: Props) {
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages.length, pending]);
 
+  // O composer fica `disabled` durante o envio/reset (perde foco por natureza
+  // de elemento desabilitado) — sem isto, cada Enter exigiria um clique de
+  // volta na caixa pra continuar digitando. Só refoca depois que o DOM já
+  // reabilitou o campo (por isso é efeito, não a mesma função que desliga o
+  // pending).
+  const composerRef = React.useRef<HTMLTextAreaElement>(null);
+  React.useEffect(() => {
+    if (!pending && !resetting) composerRef.current?.focus();
+  }, [pending, resetting]);
+
   if (!target) {
     return (
       <p className="text-sm text-muted-foreground">
@@ -340,6 +350,7 @@ export function TestPanel({ agent, draft, published, readOnly }: Props) {
         <div className="flex items-end gap-2 border-t border-border/60 p-2">
           <Textarea
             id="test-message"
+            ref={composerRef}
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             onKeyDown={handleComposerKeyDown}
