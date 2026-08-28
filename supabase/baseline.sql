@@ -14387,3 +14387,87 @@ create trigger trg_ai_document_files_updated_at
   for each row execute function public.fn_set_updated_at();
 
 notify pgrst, 'reload schema';
+
+-- ---- janela de teste do agente: ai_agent_test_conversations / ai_agent_test_messages (migration 0177) ----
+--
+-- O painel "Testar agente" rodava dry-run com conversation_id sempre null (de
+-- propósito — nunca toca contacts/conversations/messages reais), então cada
+-- clique era uma conversa nova, sem memória. Duas tabelas isoladas dão
+-- memória ao teste sem vazar lead de teste para o funil real: uma "conversa
+-- de teste" por (versão, quem testa) e as mensagens dela. RLS só de SELECT,
+-- mesmo racional da 0176 — toda escrita passa pelo admin client, admin-only.
+
+create table if not exists public.ai_agent_test_conversations (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  agent_id uuid not null references public.ai_agents(id) on delete cascade,
+  agent_version_id uuid not null references public.ai_agent_versions(id) on delete cascade,
+  created_by uuid not null references auth.users(id) on delete cascade,
+
+  sample_contact_name text,
+  sample_contact_phone text,
+
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+
+  constraint ai_agent_test_conversations_one_per_version_user
+    unique (agent_version_id, created_by)
+);
+
+create index if not exists ai_agent_test_conversations_org_idx
+  on public.ai_agent_test_conversations (organization_id);
+
+comment on table public.ai_agent_test_conversations is
+  'Uma "conversa de teste" persistente por (versão do agente, admin que testa). Nunca toca '
+  'contacts/conversations/messages reais — é o que dá memória ao painel "Testar agente" sem '
+  'o teste vazar para o funil de leads de verdade. Resetar = apagar esta linha (cascade nas '
+  'mensagens).';
+
+create table if not exists public.ai_agent_test_messages (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  test_conversation_id uuid not null references public.ai_agent_test_conversations(id) on delete cascade,
+
+  role text not null check (role in ('user', 'assistant')),
+  content text not null,
+  tool_calls jsonb,
+  guardrails jsonb,
+
+  created_at timestamptz not null default now()
+);
+
+create index if not exists ai_agent_test_messages_conv_idx
+  on public.ai_agent_test_messages (test_conversation_id, created_at);
+
+create index if not exists ai_agent_test_messages_org_idx
+  on public.ai_agent_test_messages (organization_id);
+
+comment on table public.ai_agent_test_messages is
+  'Turnos de uma ai_agent_test_conversations. O histórico completo fica aqui SEMPRE (nunca '
+  'trimado) — a janela deslizante da versão só decide o que entra no PRÓXIMO prompt, não o '
+  'que a tela mostra.';
+
+alter table public.ai_agent_test_conversations enable row level security;
+alter table public.ai_agent_test_messages enable row level security;
+
+drop policy if exists "tenant_isolation_ai_agent_test_conversations_all" on public.ai_agent_test_conversations;
+drop policy if exists "tenant_isolation_ai_agent_test_conversations_select" on public.ai_agent_test_conversations;
+create policy "tenant_isolation_ai_agent_test_conversations_select" on public.ai_agent_test_conversations
+  for select
+  using (organization_id in (select public.fn_user_org_ids()));
+
+drop policy if exists "tenant_isolation_ai_agent_test_messages_all" on public.ai_agent_test_messages;
+drop policy if exists "tenant_isolation_ai_agent_test_messages_select" on public.ai_agent_test_messages;
+create policy "tenant_isolation_ai_agent_test_messages_select" on public.ai_agent_test_messages
+  for select
+  using (organization_id in (select public.fn_user_org_ids()));
+
+revoke all on public.ai_agent_test_conversations from anon;
+revoke all on public.ai_agent_test_messages from anon;
+
+drop trigger if exists trg_ai_agent_test_conversations_updated_at on public.ai_agent_test_conversations;
+create trigger trg_ai_agent_test_conversations_updated_at
+  before update on public.ai_agent_test_conversations
+  for each row execute function public.fn_set_updated_at();
+
+notify pgrst, 'reload schema';

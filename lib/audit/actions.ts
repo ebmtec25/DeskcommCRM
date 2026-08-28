@@ -158,6 +158,7 @@ export const AUDIT_ACTIONS = [
   "ai_agent.version_created",
   "ai_agent.version_updated",
   "ai_agent.tested",
+  "ai_agent.test_conversation_reset",
   "ai_agent.reverted",
   "ai.dispatcher_run",
   "ai.pacing_knobs_updated",

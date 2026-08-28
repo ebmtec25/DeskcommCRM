@@ -25,6 +25,33 @@ export function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
+/**
+ * Trims an oldest-first message list to `messageWindow` count and
+ * `tokenWindow` budget, keeping the newest messages. Pure — no I/O — so both
+ * `loadHistoryWithBudget` (real `messages` table) and the agent test
+ * conversation loader (`ai_agent_test_messages`, see
+ * app/api/v1/ai/agents/[id]/versions/[vid]/test/route.ts) share the exact
+ * same windowing behavior instead of two copies drifting apart.
+ */
+export function trimHistoryToBudget(
+  messagesOldestFirst: HistoryMessage[],
+  budget: { messageWindow: number; tokenWindow: number },
+): HistoryMessage[] {
+  const windowed = messagesOldestFirst.slice(-Math.max(budget.messageWindow, 1));
+
+  let totalTokens = 0;
+  const kept: HistoryMessage[] = [];
+  for (let i = windowed.length - 1; i >= 0; i--) {
+    const m = windowed[i]!;
+    const tokens = estimateTokens(m.content);
+    if (totalTokens + tokens > budget.tokenWindow) break;
+    totalTokens += tokens;
+    kept.unshift(m);
+  }
+
+  return kept;
+}
+
 export async function loadHistoryWithBudget(
   supabase: SupabaseClient,
   input: LoadHistoryInput,
@@ -49,22 +76,16 @@ export async function loadHistoryWithBudget(
     .filter((m) => m.id !== input.excludeMessageId)
     .filter((m) => (m.body ?? "").trim().length > 0);
 
-  // Sort oldest-first, then trim greedily from the back so newest messages stay.
+  // Sort oldest-first before windowing.
   filtered.reverse();
 
-  let totalTokens = 0;
-  const kept: HistoryMessage[] = [];
-  for (let i = filtered.length - 1; i >= 0; i--) {
-    const m = filtered[i]!;
-    const text = (m.body ?? "").trim();
-    const tokens = estimateTokens(text);
-    if (totalTokens + tokens > input.tokenWindow) break;
-    totalTokens += tokens;
-    kept.unshift({
-      role: m.direction === "inbound" ? "user" : "assistant",
-      content: text,
-    });
-  }
+  const oldestFirst: HistoryMessage[] = filtered.map((m) => ({
+    role: m.direction === "inbound" ? "user" : "assistant",
+    content: (m.body ?? "").trim(),
+  }));
 
-  return kept;
+  return trimHistoryToBudget(oldestFirst, {
+    messageWindow: input.messageWindow,
+    tokenWindow: input.tokenWindow,
+  });
 }

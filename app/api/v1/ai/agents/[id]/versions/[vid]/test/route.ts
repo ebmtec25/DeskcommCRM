@@ -14,6 +14,15 @@
  *
  * Sample contact é apenas pra contexto do prompt — nunca toca contacts/conversations
  * tables, nunca chama WAHA, nunca cria messages.outbound.
+ *
+ * Memória do teste (migration 0177): cada admin tem UMA
+ * `ai_agent_test_conversations` por versão (`unique(agent_version_id,
+ * created_by)`), e cada chamada acrescenta o par pergunta/resposta em
+ * `ai_agent_test_messages` — tabela isolada, nunca `messages` real. O
+ * histórico completo é lido e passado como `override.history` (já recortado
+ * pela janela da versão via `trimHistoryToBudget`), e é o que dá memória a
+ * uma conversa de teste sem o dry-run deixar de ser dry-run. Ver GET/DELETE
+ * em `test-conversation/route.ts` para hidratar a tela e resetar.
  */
 import { randomUUID } from "node:crypto";
 import { type NextRequest } from "next/server";
@@ -25,6 +34,7 @@ import { requireRole } from "@/lib/auth/require-role";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { testRunSchema } from "@/lib/ai/agents/validation";
 import { avaliarRespostaDeTeste } from "@/lib/ai/agents/avaliar-resposta-de-teste";
+import { trimHistoryToBudget, type HistoryMessage } from "@/lib/ai/runtime/history";
 
 export const dynamic = "force-dynamic";
 
@@ -62,7 +72,7 @@ export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
   const { data: version } = await admin
     .from("ai_agent_versions")
     .select(
-      "id, agent_id, organization_id, system_prompt, provider, model, channel_session_id, max_steps, token_budget, cost_budget_cents, tool_ids",
+      "id, agent_id, organization_id, system_prompt, provider, model, channel_session_id, max_steps, token_budget, cost_budget_cents, tool_ids, history_message_window, history_token_window",
     )
     .eq("id", vid)
     .eq("organization_id", activeOrg.orgId)
@@ -70,6 +80,57 @@ export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
     .maybeSingle();
 
   if (!version) return fail("not_found", "Version não encontrada.", 404, { requestId });
+
+  // Conversa de teste deste admin para esta versão — cria na primeira mensagem,
+  // reusa nas seguintes (é o que dá memória; ver cabeçalho do arquivo).
+  const { data: testConv, error: testConvErr } = await admin
+    .from("ai_agent_test_conversations")
+    .upsert(
+      {
+        organization_id: activeOrg.orgId,
+        agent_id: id,
+        agent_version_id: vid,
+        created_by: authUser.id,
+        ...(parsed.data.sample_contact?.name ? { sample_contact_name: parsed.data.sample_contact.name } : {}),
+        ...(parsed.data.sample_contact?.phone ? { sample_contact_phone: parsed.data.sample_contact.phone } : {}),
+      },
+      { onConflict: "agent_version_id,created_by" },
+    )
+    .select("id, sample_contact_name, sample_contact_phone")
+    .single();
+
+  if (testConvErr || !testConv) {
+    return fail("internal_error", "Não consegui abrir a conversa de teste.", 500, { requestId });
+  }
+
+  const { data: priorMessages } = await admin
+    .from("ai_agent_test_messages")
+    .select("id, role, content, tool_calls, guardrails, created_at")
+    .eq("test_conversation_id", testConv.id)
+    .order("created_at", { ascending: true });
+
+  const priorHistory: HistoryMessage[] = (priorMessages ?? []).map((m) => ({
+    role: m.role as "user" | "assistant",
+    content: m.content,
+  }));
+  const trimmedHistory = trimHistoryToBudget(priorHistory, {
+    messageWindow: version.history_message_window,
+    tokenWindow: version.history_token_window,
+  });
+
+  const effectiveContact = {
+    name: testConv.sample_contact_name ?? undefined,
+    phone: testConv.sample_contact_phone ?? undefined,
+  };
+  const sampleContact =
+    effectiveContact.name || effectiveContact.phone ? effectiveContact : undefined;
+
+  await admin.from("ai_agent_test_messages").insert({
+    organization_id: activeOrg.orgId,
+    test_conversation_id: testConv.id,
+    role: "user",
+    content: parsed.data.sample_message,
+  });
 
   const startedAt = new Date();
 
@@ -103,7 +164,7 @@ export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
       orgId: activeOrg.orgId,
       versionId: vid,
       sampleMessage: parsed.data.sample_message,
-      sampleContact: parsed.data.sample_contact,
+      sampleContact,
       version,
       startedAt,
     });
@@ -117,7 +178,8 @@ export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
         orgId: activeOrg.orgId,
         versionId: vid,
         sampleMessage: parsed.data.sample_message,
-        sampleContact: parsed.data.sample_contact,
+        sampleContact,
+        history: trimmedHistory,
       });
     } catch (err) {
       const detalhe = err instanceof Error ? err.message : String(err);
@@ -130,6 +192,19 @@ export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
     }
   }
 
+  const { data: assistantMsg } = await admin
+    .from("ai_agent_test_messages")
+    .insert({
+      organization_id: activeOrg.orgId,
+      test_conversation_id: testConv.id,
+      role: "assistant",
+      content: typeof resultPayload.final_text === "string" ? resultPayload.final_text : "",
+      tool_calls: resultPayload.tool_calls ?? null,
+      guardrails: resultPayload.guardrails ?? null,
+    })
+    .select("id, created_at")
+    .single();
+
   void audit({
     action: "ai_agent.tested",
     actorUserId: authUser.id,
@@ -137,10 +212,27 @@ export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
     resourceType: "ai_agent_version",
     resourceId: vid,
     requestId,
-    metadata: { run_id: runRow.id, dry_run: true },
+    metadata: { run_id: runRow.id, dry_run: true, test_conversation_id: testConv.id },
   });
 
-  return ok(resultPayload, { requestId });
+  return ok(
+    {
+      ...resultPayload,
+      test_conversation_id: testConv.id,
+      messages: [
+        ...(priorMessages ?? []),
+        { id: null, role: "user", content: parsed.data.sample_message, tool_calls: null, guardrails: null },
+        {
+          id: assistantMsg?.id ?? null,
+          role: "assistant",
+          content: resultPayload.final_text ?? "",
+          tool_calls: resultPayload.tool_calls ?? null,
+          guardrails: resultPayload.guardrails ?? null,
+        },
+      ],
+    },
+    { requestId },
+  );
 }
 
 interface StubArgs {
@@ -220,6 +312,7 @@ async function callInternalRuntime(args: {
   versionId: string;
   sampleMessage: string;
   sampleContact?: { name?: string; phone?: string };
+  history?: HistoryMessage[];
 }): Promise<Record<string, unknown>> {
   // S-13.08 wires the real runtime. We invoke `runAgent` in-process to avoid
   // a fetch loopback (no cold-start, no INTERNAL_SECRET required in dev).
@@ -231,6 +324,7 @@ async function callInternalRuntime(args: {
     override: {
       sampleMessage: args.sampleMessage,
       sampleContact: args.sampleContact,
+      history: args.history,
     },
   });
   // O runtime desta rota é o `@deprecated`, e ele NÃO importa `runBeforeSend` —

@@ -50,6 +50,13 @@ const USER_A = "aaaaaaaa-1111-4000-8000-000000000001";
 const USER_B = "bbbbbbbb-1111-4000-8000-000000000002";
 const SESS_A = "aaaaaaaa-2222-4000-8000-000000000001";
 const SESS_B = "bbbbbbbb-2222-4000-8000-000000000002";
+// migration 0177 — janela de teste do agente.
+const AGENT_A = "aaaaaaaa-3333-4000-8000-000000000001";
+const AGENT_B = "bbbbbbbb-3333-4000-8000-000000000002";
+const AGENT_VERSION_A = "aaaaaaaa-4444-4000-8000-000000000001";
+const AGENT_VERSION_B = "bbbbbbbb-4444-4000-8000-000000000002";
+const TEST_CONV_A = "aaaaaaaa-5555-4000-8000-000000000001";
+const TEST_CONV_B = "bbbbbbbb-5555-4000-8000-000000000002";
 
 /**
  * Runs SELECTs as the `authenticated` role with the given user's JWT claims,
@@ -68,6 +75,33 @@ function countAs(userId: string, countQuery: string): number {
     throw new Error(`unexpected psql output: ${out}`);
   }
   return Number(last);
+}
+
+function seedAgentTest(
+  org: string,
+  user: string,
+  sess: string,
+  agent: string,
+  version: string,
+  conv: string,
+): string {
+  return `
+    insert into public.ai_agents (id, organization_id, name, model, system_prompt)
+      values ('${agent}', '${org}', 'RLS Invariant Agent', 'anthropic/claude-sonnet-4-6', 'prompt')
+      on conflict (id) do nothing;
+    insert into public.ai_agent_versions
+      (id, organization_id, agent_id, version_number, system_prompt, provider, model, channel_session_id)
+      values ('${version}', '${org}', '${agent}', 1, 'prompt', 'anthropic', 'claude-sonnet-4-6', '${sess}')
+      on conflict (id) do nothing;
+    insert into public.ai_agent_test_conversations (id, organization_id, agent_id, agent_version_id, created_by)
+      values ('${conv}', '${org}', '${agent}', '${version}', '${user}')
+      on conflict (id) do nothing;
+    insert into public.ai_agent_test_messages (organization_id, test_conversation_id, role, content)
+      select '${org}', '${conv}', 'user', 'rls invariant probe'
+      where not exists (
+        select 1 from public.ai_agent_test_messages where test_conversation_id = '${conv}'
+      );
+  `;
 }
 
 function seedOrg(org: string, user: string, sess: string, tag: string): string {
@@ -89,6 +123,10 @@ function seedOrg(org: string, user: string, sess: string, tag: string): string {
 
 beforeAll(() => {
   sql(seedOrg(ORG_A, USER_A, SESS_A, "a") + seedOrg(ORG_B, USER_B, SESS_B, "b"));
+  sql(
+    seedAgentTest(ORG_A, USER_A, SESS_A, AGENT_A, AGENT_VERSION_A, TEST_CONV_A) +
+      seedAgentTest(ORG_B, USER_B, SESS_B, AGENT_B, AGENT_VERSION_B, TEST_CONV_B),
+  );
   // Contact → conversation → message + pipeline → stage → lead, per org.
   sql(`
     do $seed$
@@ -223,6 +261,12 @@ const TABLES = [
   // sabotada para `... or true` a suíte seguia 31/31 verde num banco em que o vizinho
   // lia e escrevia. É o modo de falha que o aviso acima descreve, encontrado vivo.
   "org_guardrail_layers",
+  // migration 0177 — memória do painel "Testar agente". Policy é só SELECT
+  // (toda escrita passa pelo admin client da rota, admin-only), mas o SELECT
+  // ainda precisa não vazar entre tenants — é o mesmo caminho que
+  // `ai_document_files` (0176) deixou de fora por descuido, não por desenho.
+  "ai_agent_test_conversations",
+  "ai_agent_test_messages",
   // ⚠️ `webhook_lead_captures` (migration 0174) NÃO entra nesta lista, e a
   // ausência é deliberada: a policy dela exige `manager`, e o usuário semeado
   // aqui é `agent` — o controle positivo falharia por ACERTO, e a "correção"

@@ -42,7 +42,7 @@ import { computeCostCents } from "./cost";
 import { finalizeRun } from "./finalize";
 import { sendFinalResponse } from "./finalize";
 import { finalizeHandoff } from "./handoff";
-import { loadHistoryWithBudget } from "./history";
+import { loadHistoryWithBudget, type HistoryMessage } from "./history";
 import { mintEphemeralToken, revokeEphemeralToken } from "./mcp_token";
 import { pickToolsFromMcp, type RuntimeHandoffSignal } from "./tools";
 import { serializeSteps } from "./serialize";
@@ -60,6 +60,8 @@ export interface RunAgentInput {
   override?: {
     sampleMessage?: string;
     sampleContact?: { name?: string; phone?: string };
+    /** Pre-trimmed prior turns of the test conversation (ai_agent_test_messages). */
+    history?: HistoryMessage[];
   };
 }
 
@@ -447,15 +449,21 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
     });
 
     // 8) Load history with budget.
-    const history = run.conversation_id
-      ? await loadHistoryWithBudget(admin, {
-          conversationId: run.conversation_id,
-          organizationId: run.organization_id,
-          messageWindow: version.history_message_window,
-          tokenWindow: version.history_token_window,
-          excludeMessageId: run.inbound_message_id ?? undefined,
-        })
-      : [];
+    // `override.history` is the test conversation window (S-13.12 follow-up):
+    // conversation_id stays null on this path on purpose (dry-run never
+    // touches contacts/conversations/messages), so the caller pre-loads and
+    // trims ai_agent_test_messages itself via trimHistoryToBudget and hands
+    // the result in. Real inbound turns never set this field.
+    const history = input.override?.history
+      ?? (run.conversation_id
+        ? await loadHistoryWithBudget(admin, {
+            conversationId: run.conversation_id,
+            organizationId: run.organization_id,
+            messageWindow: version.history_message_window,
+            tokenWindow: version.history_token_window,
+            excludeMessageId: run.inbound_message_id ?? undefined,
+          })
+        : []);
 
     // 9) Build LM directly against the provider (BYOK credential — see buildModel doc).
     const model = buildModel(version.provider, credentialApiKey, version.model);
