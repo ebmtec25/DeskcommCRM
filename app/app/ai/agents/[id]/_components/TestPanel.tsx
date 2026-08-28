@@ -19,8 +19,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 
@@ -158,8 +156,6 @@ export function TestPanel({ agent, draft, published, readOnly }: Props) {
   const qc = useQueryClient();
 
   const [message, setMessage] = React.useState("");
-  const [contactName, setContactName] = React.useState("");
-  const [contactPhone, setContactPhone] = React.useState("");
   const [pending, setPending] = React.useState(false);
   const [resetting, setResetting] = React.useState(false);
   const [loadingThread, setLoadingThread] = React.useState(true);
@@ -176,8 +172,6 @@ export function TestPanel({ agent, draft, published, readOnly }: Props) {
         `/api/v1/ai/agents/${agent.id}/versions/${targetId}/test-conversation`,
       );
       setMessages(res.data.messages ?? []);
-      setContactName(res.data.sample_contact?.name ?? "");
-      setContactPhone(res.data.sample_contact?.phone ?? "");
     } catch {
       // Aba de teste não é crítica o bastante pra travar a tela por isto —
       // simplesmente começa como se fosse a primeira mensagem.
@@ -191,6 +185,12 @@ export function TestPanel({ agent, draft, published, readOnly }: Props) {
     setLastResult(null);
     void loadThread();
   }, [loadThread]);
+
+  const scrollRef = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [messages.length, pending]);
 
   if (!target) {
     return (
@@ -212,8 +212,6 @@ export function TestPanel({ agent, draft, published, readOnly }: Props) {
       await apiClient.delete(`/api/v1/ai/agents/${agent.id}/versions/${target.id}/test-conversation`);
       setMessages([]);
       setLastResult(null);
-      setContactName("");
-      setContactPhone("");
       setMessage("");
       toast.success("Conversa de teste resetada.");
     } catch (err) {
@@ -241,16 +239,9 @@ export function TestPanel({ agent, draft, published, readOnly }: Props) {
     if (!target) return;
     setPending(true);
     try {
-      const body: Record<string, unknown> = { sample_message: texto };
-      if (contactName.trim() || contactPhone.trim()) {
-        body.sample_contact = {
-          ...(contactName.trim() ? { name: contactName.trim() } : {}),
-          ...(contactPhone.trim() ? { phone: contactPhone.trim() } : {}),
-        };
-      }
       const res = await apiClient.post<TestResponse>(
         `/api/v1/ai/agents/${agent.id}/versions/${target.id}/test`,
-        body,
+        { sample_message: texto },
       );
       setLastResult(res.data);
       if (res.data.messages) setMessages(res.data.messages);
@@ -270,126 +261,105 @@ export function TestPanel({ agent, draft, published, readOnly }: Props) {
 
   const hasThread = messages.length > 0;
 
+  function handleComposerKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      void handleRun();
+    }
+  }
+
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
-      <div className="flex flex-col gap-4">
-        <div className="flex items-center justify-between gap-2">
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Versão alvo
-            </p>
-            <div className="flex items-center gap-2 text-sm">
-              <Badge variant="outline">{versionLabel}</Badge>
-              <span className="font-mono text-xs">
-                {target.provider} / {target.model}
-              </span>
-            </div>
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Versão alvo
+          </p>
+          <div className="flex items-center gap-2 text-sm">
+            <Badge variant="outline">{versionLabel}</Badge>
+            <span className="font-mono text-xs">
+              {target.provider} / {target.model}
+            </span>
           </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={handleReset}
-            disabled={resetting || (!hasThread && !loadingThread) || readOnly}
-          >
-            {resetting ? "Resetando…" : "Resetar conversa"}
-          </Button>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={handleReset}
+          disabled={resetting || (!hasThread && !loadingThread) || readOnly}
+        >
+          {resetting ? "Resetando…" : "Resetar conversa"}
+        </Button>
+      </div>
+
+      <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-2 text-xs">
+        <p className="text-muted-foreground">
+          ⚠ Consome créditos do provider e nunca envia via WhatsApp. Esta conversa lembra das
+          mensagens anteriores até você resetar (ou digitar "resetar").
+        </p>
+      </div>
+
+      <div className="flex flex-col rounded-md border border-border/60">
+        <div
+          ref={scrollRef}
+          className="flex max-h-[480px] min-h-[280px] flex-col gap-2 overflow-y-auto p-3"
+        >
+          {loadingThread ? (
+            <p className="text-sm text-muted-foreground">Carregando…</p>
+          ) : null}
+
+          {!loadingThread && !hasThread && !pending ? (
+            <p className="text-sm text-muted-foreground">
+              Nenhuma mensagem ainda — mande a primeira abaixo.
+            </p>
+          ) : null}
+
+          {hasThread ? (
+            <div className="flex flex-col gap-2" data-testid="teste-thread">
+              {messages.map((m, idx) => (
+                <div
+                  key={m.id ?? idx}
+                  className={
+                    m.role === "user"
+                      ? "self-end max-w-[85%] rounded-md bg-primary/10 px-3 py-2 text-sm"
+                      : "self-start max-w-[85%] rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-sm"
+                  }
+                >
+                  <p className="whitespace-pre-wrap">{m.content}</p>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          {pending ? (
+            <p className="self-start text-sm text-muted-foreground">Digitando…</p>
+          ) : null}
         </div>
 
-        <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-xs">
-          <p className="font-medium text-amber-700 dark:text-amber-400">
-            ⚠ Modo teste consome créditos do provider.
-          </p>
-          <p className="mt-1 text-muted-foreground">
-            Nenhuma mensagem é enviada via WhatsApp. Esta conversa fica só entre você e o agente —
-            cada mensagem lembra das anteriores até você resetar (ou digitar "resetar").
-          </p>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="test-message">Mensagem do cliente (sample)</Label>
+        <div className="flex items-end gap-2 border-t border-border/60 p-2">
           <Textarea
             id="test-message"
             value={message}
             onChange={(e) => setMessage(e.target.value)}
-            placeholder='Oi, quanto custa X? (ou digite "resetar" para recomeçar)'
-            rows={4}
+            onKeyDown={handleComposerKeyDown}
+            placeholder='Oi, quanto custa X? (Enter envia, Shift+Enter quebra linha, "resetar" recomeça)'
+            rows={2}
             disabled={pending || resetting || readOnly}
+            className="flex-1 resize-none"
           />
+          <Button onClick={handleRun} disabled={pending || resetting || readOnly}>
+            {pending ? "Enviando…" : "Enviar"}
+          </Button>
         </div>
-
-        <div className="grid grid-cols-2 gap-2">
-          <div className="space-y-2">
-            <Label htmlFor="test-name">Nome (opcional)</Label>
-            <Input
-              id="test-name"
-              value={contactName}
-              onChange={(e) => setContactName(e.target.value)}
-              placeholder="Maria"
-              disabled={pending || resetting || readOnly || hasThread}
-              title={hasThread ? "Definido no início desta conversa de teste — resete para trocar." : undefined}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="test-phone">Telefone (opcional)</Label>
-            <Input
-              id="test-phone"
-              value={contactPhone}
-              onChange={(e) => setContactPhone(e.target.value)}
-              placeholder="+55..."
-              disabled={pending || resetting || readOnly || hasThread}
-              title={hasThread ? "Definido no início desta conversa de teste — resete para trocar." : undefined}
-            />
-          </div>
-        </div>
-
-        <Button onClick={handleRun} disabled={pending || resetting || readOnly} className="self-start">
-          {pending ? "Executando…" : "Enviar"}
-        </Button>
       </div>
 
-      <div className="flex flex-col gap-3">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Conversa de teste
-        </p>
-
-        {loadingThread ? (
-          <p className="text-sm text-muted-foreground">Carregando…</p>
-        ) : null}
-
-        {!loadingThread && !hasThread && !pending ? (
-          <p className="text-sm text-muted-foreground">
-            Nenhuma mensagem ainda — mande a primeira acima.
-          </p>
-        ) : null}
-
-        {hasThread ? (
-          <div className="flex flex-col gap-2" data-testid="teste-thread">
-            {messages.map((m, idx) => (
-              <div
-                key={m.id ?? idx}
-                className={
-                  m.role === "user"
-                    ? "self-end max-w-[85%] rounded-md bg-primary/10 px-3 py-2 text-sm"
-                    : "self-start max-w-[85%] rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-sm"
-                }
-              >
-                <p className="whitespace-pre-wrap">{m.content}</p>
-              </div>
-            ))}
-          </div>
-        ) : null}
-
-        {pending ? (
-          <p className="text-sm text-muted-foreground">Executando dry-run…</p>
-        ) : null}
-
-        {lastResult ? (
-          <div className="mt-2 flex flex-col gap-3 border-t border-border/60 pt-3">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Detalhe do último turno
-            </p>
-
+      {lastResult ? (
+        <details className="rounded-md border border-border/60 p-2 text-xs">
+          <summary className="cursor-pointer font-medium uppercase tracking-wide text-muted-foreground">
+            Detalhe do último turno
+          </summary>
+          <div className="mt-3 flex flex-col gap-3">
             {lastResult.stub ? (
               <p className="rounded-md border border-border/60 bg-muted/40 p-2 text-xs text-muted-foreground">
                 Stub: o runtime real é entregue na S-13.08. O trace abaixo é simulado.
@@ -416,8 +386,8 @@ export function TestPanel({ agent, draft, published, readOnly }: Props) {
 
             {lastResult.guardrails ? <Verificacoes g={lastResult.guardrails} /> : null}
           </div>
-        ) : null}
-      </div>
+        </details>
+      ) : null}
     </div>
   );
 }
