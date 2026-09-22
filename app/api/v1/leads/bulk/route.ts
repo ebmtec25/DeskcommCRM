@@ -25,6 +25,13 @@ export const dynamic = "force-dynamic";
 
 const MAX_BULK = 50;
 
+/** Uma linha do retorno de `fn_mover_leads_em_lote` (migration 0178). */
+interface MovidoEmLote {
+  lead_id: string;
+  from_stage_id: string;
+  pipeline_id: string;
+}
+
 export async function POST(req: NextRequest): Promise<Response> {
   const requestId = randomUUID();
   const supabase = await createClient();
@@ -124,22 +131,23 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   switch (input.action) {
     case "move": {
-      const { data, error } = await supabase
-        .from("crm_leads")
-        .update({
-          stage_id: input.params.stage_id,
-          position_in_stage: input.params.position_in_stage,
-          updated_at: nowIso,
-        })
-        .in("id", visibleIds)
-        .select("id");
+      // migration 0178: um `update` com um único `position_in_stage` escalar
+      // empata N leads na mesma posição (fractional indexing quebra quando
+      // prev === next). `fn_mover_leads_em_lote` dá posição distinta a cada
+      // lead numa transação só; o `position_in_stage` do payload do cliente
+      // segue aceito pelo schema mas não é mais usado — o servidor calcula.
+      const { data, error } = (await supabase.rpc("fn_mover_leads_em_lote", {
+        p_organization_id: organizationId,
+        p_lead_ids: visibleIds,
+        p_stage_id: input.params.stage_id,
+      })) as { data: MovidoEmLote[] | null; error: { message: string } | null };
       if (error) return fail("internal_error", error.message, 500, { requestId });
       updatedCount = data?.length ?? 0;
 
       // Per-lead lead.stage_changed so the automation engine (which only
       // consumes per-entity events) fires for bulk moves too — mirrors
       // moveLeadHandler's payload. Skip leads already at the target stage.
-      const movedIds = new Set((data ?? []).map((r) => r.id as string));
+      const movedIds = new Set((data ?? []).map((r) => r.lead_id));
 
       // Wave 3 (CORE 2): mover 30 cards de uma vez é 30 mudanças de estado —
       // cada uma entra no barramento, senão o lote inteiro fica invisível na

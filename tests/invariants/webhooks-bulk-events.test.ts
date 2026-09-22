@@ -170,11 +170,37 @@ interface EmitEventParams {
   p_organization_id: string;
 }
 
+interface MoverLeadsEmLoteParams {
+  p_organization_id: string;
+  p_lead_ids: string[];
+  p_stage_id: string;
+}
+
 function fakeClient(): SupabaseClient {
   return {
     from: (table: string) => new FakeQB(table),
     rpc: (name: string, params: Record<string, unknown>): Promise<QResult> => {
       return (async () => {
+        // migration 0178: o handler de "move" chama esta função em vez de um
+        // update direto — o double precisa saber rodá-la de verdade contra o
+        // Postgres efêmero, senão o teste prova um handler que não existe mais.
+        if (name === "fn_mover_leads_em_lote") {
+          const p = params as unknown as MoverLeadsEmLoteParams;
+          try {
+            const out = sql(`
+              select coalesce(json_agg(t), '[]') from (
+                select * from public.fn_mover_leads_em_lote(
+                  ${sqlString(p.p_organization_id)}::uuid,
+                  ARRAY[${p.p_lead_ids.map((id) => sqlString(id)).join(",")}]::uuid[],
+                  ${sqlString(p.p_stage_id)}::uuid
+                )
+              ) t;
+            `);
+            return { data: JSON.parse(out || "[]"), error: null };
+          } catch (err) {
+            return { data: null, error: { message: (err as Error).message } };
+          }
+        }
         if (name !== "emit_event") throw new Error(`fakeClient: unsupported rpc ${name}`);
         const p = params as unknown as EmitEventParams;
         try {
